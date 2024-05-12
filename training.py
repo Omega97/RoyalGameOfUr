@@ -1,6 +1,5 @@
 import os
 from copy import deepcopy
-
 from royal_game_of_ur import RoyalGameOfUr
 from training_data import create_dataset_from_game_files
 
@@ -45,6 +44,9 @@ class Training:
         self.game = game_instance
         self.games_dir = games_dir
 
+        if not os.path.exists(games_dir):
+            os.mkdir(games_dir)
+
         # data
         self.X = None
         self.y_policy = None
@@ -80,42 +82,48 @@ class Training:
             print(f'\nPlaying game {i+1}/{n_games}')
             self.play_game(verbose=verbose)
 
-    def _get_game_files(self, n_min=25, game_ratio=0.5):
+    def _get_game_files(self, min_n_games, game_ratio=0.5):
         """ Return a list of game files """
         game_files = [f"{self.games_dir}\\{f}" for f in os.listdir(self.games_dir)]
         n_games = int(len(game_files) * game_ratio)
-        n_games = max(n_min, n_games)
+        n_games = max(min_n_games, n_games)
         return game_files[-n_games:]
 
-    def _convert_games_to_training_data(self, halflife=10):
+    def convert_games_to_training_data(self, min_n_games=20, halflife=20):
         """
         Convert the games played by the agent to training data
         and store them in the instance variables X, y_policy, y_value
         """
 
         # choose files
-        game_files = self._get_game_files()
+        game_files = self._get_game_files(min_n_games)
         print(f'\nConverting {len(game_files)} games to training data...')
 
         # create dataset
         self.X, self.y_policy, self.y_value = create_dataset_from_game_files(game_files=game_files,
                                                                              halflife=halflife)
 
-    def _train_agent(self, n_epochs, lr=0.1):
+    def _train_agent(self, n_epochs_policy, n_epochs_value, lr=0.1):
         """
         Train the policy and value function using
         the training data, then save the trained models.
         """
-        self.agent_instance.train_agent(x=self.X, y_policy=self.y_policy,
-                                        y_value=self.y_value, n_epochs=n_epochs, lr=lr)
+        self.agent_instance.train_agent(x=self.X,
+                                        y_policy=self.y_policy,
+                                        y_value=self.y_value,
+                                        n_epochs_value=n_epochs_value,
+                                        n_epochs_policy=n_epochs_policy,
+                                        lr=lr)
         self.agent_instance.save_models()
 
     def run(self, n_cycles, n_games_per_cycle, halflife=20,
-            n_epochs=5000, lr=0.1, verbose=True):
+            n_epochs_policy=500, n_epochs_value=500, lr=0.1,
+            min_n_games=20, verbose=True):
         """ Run the training process """
         for i in range(n_cycles):
             print(f'\n\nTraining cycle {i+1}/{n_cycles}')
             self._load_agents()
-            self._play_self_play_games(n_games_per_cycle, verbose=verbose)
-            self._convert_games_to_training_data(halflife=halflife)
-            self._train_agent(n_epochs=n_epochs, lr=lr)
+            n = n_games_per_cycle  # n = min_n_games if i == 0 else n_games_per_cycle
+            self._play_self_play_games(n, verbose=verbose)
+            self.convert_games_to_training_data(min_n_games, halflife=halflife)
+            self._train_agent(n_epochs_policy, n_epochs_value, lr=lr)
