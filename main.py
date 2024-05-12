@@ -11,15 +11,22 @@ def main(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning
 
     agent = NNAgent(game_instance=RoyalGameOfUr(),
                     models_dir=os.path.join(root_dir, 'ur_models'),
-                    n_rollouts=100,
-                    rollout_depth=5)
+                    n_rollouts=200,
+                    rollout_depth=5,
+                    )
 
     training = Training(agent_instance=agent,
                         game_instance=RoyalGameOfUr(),
                         games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
-    training.run(n_cycles=1, n_games_per_cycle=10, halflife=10, verbose=False)
+    training.run(n_cycles=20,
+                 n_games_per_cycle=10,
+                 n_epochs_policy=1000,
+                 n_epochs_value=1000,
+                 halflife=20,
+                 lr=0.1,
+                 verbose=False)
 
 
 if __name__ == '__main__':
