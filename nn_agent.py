@@ -6,6 +6,7 @@ from time import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
 # from training import Training
 from royal_game_of_ur import RoyalGameOfUr
@@ -22,48 +23,44 @@ def initialize_weights(model, weight_range=0.1):
             torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
 
 
-def create_policy(input_size, hidden_units, output_size, weight_range=0.01):
-    """ MLP Policy """
-    policy = nn.Sequential(
-        nn.Linear(input_size, hidden_units),
-        nn.Sigmoid(),
-        nn.Linear(hidden_units, output_size),
-        nn.Softmax(dim=1)
-    )
-
-    initialize_weights(policy, weight_range)
-
-    return policy
-
-
-def create_value_function(input_size, hidden_units, output_size, weight_range=0.01):
-    """ MLP value function """
-    value_function = nn.Sequential(
-        nn.Linear(input_size, hidden_units),
-        nn.Sigmoid(),
-        nn.Linear(hidden_units, output_size),
-        nn.Sigmoid()
-    )
-
-    initialize_weights(value_function, weight_range)
-
-    return value_function
-
-
 class PolicyAgent(Agent):
     """This bot uses the policy to make decisions"""
 
-    def __init__(self, policy):
+    def __init__(self, policy=None, greedy=False, policy_path=None):
         self.policy = policy
+        self.greedy = greedy
+        self.policy_path = policy_path
+
+        # set policy
+        if self.policy is None:
+            self.reset()
+
+    def reset(self):
+        self._load_from_path()
+
+    def _load_from_path(self):
+        """Load policy from path"""
+        if self.policy_path is not None:
+            assert os.path.exists(self.policy_path), 'File not found'
+            self.policy = torch.load(self.policy_path)
+            assert self.policy is not None, 'Failed to load policy'
 
     def get_action(self, state_info: dict, verbose=False) -> dict:
-        """Get the action with the highest probability from the policy"""
+        """Sample a random action according to the
+        probability distribution of the policy"""
+        assert self.policy is not None
         features = state_to_features(state_info)
         X = np.array([features])
         X = torch.tensor(X, dtype=torch.float)
         y = self.policy(X).detach().numpy()
         y *= state_info["legal_moves"]
-        action = int(np.argmax(y[0]))
+        assert np.sum(y) > 0, "No legal moves"
+
+        if self.greedy:
+            action = int(np.argmax(y[0]))
+        else:
+            action = np.random.choice(len(y[0]), p=y[0] / np.sum(y[0]))  # todo normalization?
+
         return {"action": action}
 
 
@@ -73,7 +70,7 @@ class NNAgent(Agent):
                  game_instance,
                  models_dir,
                  n_rollouts=100,
-                 rollout_depth=20):
+                 rollout_depth=5):
         self.game = game_instance
         self.dir_path = models_dir
         self.n_rollouts = n_rollouts
@@ -95,7 +92,28 @@ class NNAgent(Agent):
     def __repr__(self):
         return f"NNAgent(n_rollouts={self.n_rollouts}, rollout_depth={self.rollout_depth})"
 
-    def _set_policy_and_value_function(self, input_size=82, hidden_units=100, n_moves=16, verbose=True):
+    def reset_policy(self, input_size, hidden_units, output_size):
+        """ MLP Policy """
+        self.policy = (
+            nn.Sequential(
+                nn.Linear(input_size, hidden_units),
+                nn.Sigmoid(),
+                nn.Linear(hidden_units, output_size),
+                nn.Softmax(dim=1)
+            ))
+
+    def reset_value_function(self, input_size, hidden_units, output_size, weight_range=0.01):
+        """ MLP value function """
+        self.value_function = (
+            nn.Sequential(
+                nn.Linear(input_size, hidden_units),
+                nn.Sigmoid(),
+                nn.Linear(hidden_units, output_size),
+                nn.Sigmoid()
+            ))
+        initialize_weights(self.value_function, weight_range)
+
+    def _set_policy_and_value_function(self, input_size=82, hidden_units=16, n_moves=16, verbose=False):
         """Try loading policy.pkl and value_function.pkl from dir_path, otherwise create new ones"""
         try:
             if verbose:
@@ -104,11 +122,13 @@ class NNAgent(Agent):
             value_function = f"{self.dir_path}\\value_function.pkl"
             self.policy = torch.load(policy_path)
             self.value_function = torch.load(value_function)
-            print('>>> Models loaded successfully!')
+            if verbose:
+                print('>>> Models loaded successfully!')
         except FileNotFoundError:
-            print('\n>>> Loading failed; creating new models...')
-            self.policy = create_policy(input_size=input_size, hidden_units=hidden_units, output_size=n_moves)
-            self.value_function = create_value_function(input_size=input_size, hidden_units=hidden_units, output_size=2)
+            if verbose:
+                print('\n>>> Loading failed. Creating new models...')
+            self.reset_policy(input_size=input_size, hidden_units=hidden_units, output_size=n_moves)
+            self.reset_value_function(input_size=input_size, hidden_units=hidden_units, output_size=2)
 
     def _set_policy_agent(self):
         """Set the policy agent using the policy"""
@@ -129,7 +149,7 @@ class NNAgent(Agent):
 
             # create a list of states after each move
             for i in range(self.n_moves):
-                state = self.game.deepcopy()             # without deepcopy, this doesn't work
+                state = self.game.deepcopy()  # without deepcopy, this doesn't work
                 state = state.set_state(state_info)
                 state.move(self.legal_indices[i])
                 self.states.append(state)
@@ -159,7 +179,7 @@ class NNAgent(Agent):
         Get a random number between 1 and self.rollout_depth, or
         None if self.rollout_depth is None.
         """
-        return self.rollout_depth   # todo implement
+        return self.rollout_depth  # todo implement
 
     def _rollout(self, state: RoyalGameOfUr, player_id):
         """
@@ -183,7 +203,7 @@ class NNAgent(Agent):
 
     def _visit(self, move_index, player_id):
         """Update the visit and score arrays for a given move index"""
-        state = self.states[move_index].deepcopy()       # without deepcopy, this doesn't work
+        state = self.states[move_index].deepcopy()  # without deepcopy, this doesn't work
         value = self._rollout(state, player_id)
         self.visits[move_index] += 1
         self.scores[move_index] += value
@@ -202,9 +222,9 @@ class NNAgent(Agent):
         """
         For every possible move, the agent makes n_rollouts rollouts
         and evaluates the position after rollout_depth moves using
-        the value function. The move with the highest expected value
-        is chosen.
+        the value function. Return the move with the highest expected value.
         """
+        # todo run simulations in parallel
         t = time()
         self._reset_search(state_info)
 
@@ -213,12 +233,10 @@ class NNAgent(Agent):
             return {"action": self.legal_indices[0]}
 
         # rollouts
+        player_id = state_info["current_player"]
         for i in range(self.n_moves):
-
-            # print(f'\n Move {self.legal_indices[i]}')
-
             for _ in range(self.n_rollouts):
-                self._visit(i, player_id=state_info["current_player"])
+                self._visit(i, player_id=player_id)
 
         # get index of best move
         ev = self.scores / self.visits
@@ -227,8 +245,13 @@ class NNAgent(Agent):
         # print
         if verbose:
             policy = self.call_policy(state_info)
+            value = self.evaluate_state(state_info)
+            print(f'\n>>> {self.n_rollouts} rollouts, depth {self.rollout_depth}')
+            print(f'value: {value[player_id]:.3f}')
+            print()
+
             for i in range(self.n_moves):
-                color = 91 if state_info["current_player"] == 1 else 94
+                color = 91 if player_id == 1 else 94
 
                 p_2 = policy[self.legal_indices[i]]
                 s_2 = f'{self.legal_indices[i]:3}: {p_2:6.1%}  |'
@@ -255,31 +278,70 @@ class NNAgent(Agent):
     def get_value_function(self):
         return self.value_function
 
-    def _train_policy(self, x, y,
-                      n_epochs=1000, lr=0.1,
-                      momentum=0.9, verbose=True):
+    def _get_policy_accuracy(self, x, y_true):
+        """ example tensors -> acc"""
+        y = y_true.detach().numpy()
+        y_true_values = np.argmax(y, axis=1)
+        y_pred = self.policy(x)
+        y_pred_values = np.argmax(y_pred.detach().numpy(), axis=1)
+        accuracy = np.mean(y_pred_values == y_true_values)
+        return accuracy
+
+    def _get_value_function_rmse(self, x, y_true):
+        """ example tensors -> rmse"""
+        y = y_true.detach().numpy()
+        y_pred = self.value_function(x)
+        rmse = np.sqrt(np.mean((y_pred.detach().numpy() - y) ** 2))
+        return rmse
+
+    def train_policy(self, x, y,
+                     n_epochs=500, lr=0.1,
+                     momentum=0.9, batch_size=100,
+                     print_period=50, verbose=True):
         """Train the policy using the training data"""
         if self.policy is None:
             raise ValueError("Policy is not set")
         if verbose:
             print("\n>>> Training policy")
 
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(self.policy.parameters(),
-                              lr=lr, momentum=momentum)
+        # stochastic gradient descent with momentum and fixed batch size
+        criterion = nn.BCELoss()
+        optimizer = optim.SGD(self.policy.parameters(), lr=lr, momentum=momentum)
+        dataset = TensorDataset(x, y)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        losses = []
+
+        # accuracy
+        if verbose:
+            acc = self._get_policy_accuracy(x, y)
+            print(f' accuracy: {acc:.1%}')
 
         for epoch in range(n_epochs):
-            optimizer.zero_grad()
-            output = self.policy(x.float())
-            loss = criterion(output, y)
-            loss.backward()
-            optimizer.step()
+            if verbose and (epoch + 1) % print_period == 0:
+                losses = []
+
+            for x_batch, y_batch in data_loader:
+                optimizer.zero_grad()
+                output = self.policy(x_batch.float())
+                loss = criterion(output, y_batch)
+                loss.backward()
+                optimizer.step()
+                if verbose and (epoch + 1) % print_period == 0:
+                    losses.append(loss.item())
 
             # performance
-            if verbose and (epoch+1) % 100 == 0:
-                print(f'Epoch {epoch+1:5}, Loss: {loss.item():.5f}')
+            if verbose and (epoch + 1) % print_period == 0:
+                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.5f}')
 
-    def _train_value_function(self, x, y, n_epochs=1000, lr=0.1, momentum=0.9, verbose=True):
+        # accuracy
+        if verbose:
+            acc = self._get_policy_accuracy(x, y)
+            print(f' accuracy: {acc:.1%}')
+
+    def train_value_function(self, x, y,
+                             n_epochs=1000, lr=0.1,
+                             momentum=0.9, batch_size=100,
+                             print_period=50, verbose=True):
         """Train the value function using the training data"""
         if self.value_function is None:
             raise ValueError("Value function is not set")
@@ -288,22 +350,43 @@ class NNAgent(Agent):
 
         criterion = nn.MSELoss()
         optimizer = optim.SGD(self.value_function.parameters(), lr=lr, momentum=momentum)
+        dataset = TensorDataset(x, y)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        losses = []
+
+        # rmse
+        if verbose:
+            rmse = self._get_value_function_rmse(x, y)
+            print(f'     rmse: {rmse:.4f}')
 
         for epoch in range(n_epochs):
-            optimizer.zero_grad()
-            output = self.value_function(x.float())
-            loss = criterion(output, y)
-            loss.backward()
-            optimizer.step()
+            if verbose and (epoch + 1) % print_period == 0:
+                losses = []
+
+            for x_batch, y_batch in data_loader:
+                optimizer.zero_grad()
+                output = self.value_function(x_batch.float())
+                loss = criterion(output, y_batch)
+                loss.backward()
+                optimizer.step()
+                if verbose and (epoch + 1) % print_period == 0:
+                    losses.append(loss.item())
 
             # performance
-            if verbose and (epoch+1) % 100 == 0:
-                print(f'Epoch {epoch+1:5}, Loss: {loss.item():.5f}')
+            if verbose and (epoch + 1) % print_period == 0:
+                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.5f}')
 
-    def train_agent(self, x, y_policy, y_value, n_epochs=4000, lr=0.1, momentum=0.9, verbose=True):
+        # rmse
+        if verbose:
+            rmse = self._get_value_function_rmse(x, y)
+            print(f'     rmse: {rmse:.4f}')
+
+    def train_agent(self, x, y_policy, y_value,
+                    n_epochs_policy=500, n_epochs_value=500,
+                    lr=0.1, momentum=0.9, verbose=True):
         """Train the policy and value function using the training data"""
-        self._train_policy(x, y_policy, n_epochs=n_epochs, lr=lr, momentum=momentum, verbose=verbose)
-        self._train_value_function(x, y_value, n_epochs=n_epochs, lr=lr, momentum=momentum, verbose=verbose)
+        self.train_policy(x, y_policy, n_epochs=n_epochs_policy, lr=lr, momentum=momentum, verbose=verbose)
+        self.train_value_function(x, y_value, n_epochs=n_epochs_value, lr=lr, momentum=momentum, verbose=verbose)
 
     def save_models(self, verbose=True):
         """Save the policy and value function to dir_path"""
