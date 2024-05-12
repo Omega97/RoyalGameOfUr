@@ -28,6 +28,10 @@ class Agent:
             print(f'action: {action}')
         return {"action": action}
 
+    def reset(self):
+        """Resets the agent to its initial state before the game."""
+        pass
+
     def __call__(self, state_info, **kw):
         out = self.get_action(state_info, **kw)
         assert type(out) is dict
