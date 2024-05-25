@@ -19,20 +19,26 @@ def test_backpropagation(n=100):
     plt.show()
 
 
-def test_create_dataset(games_dir='database'):
+def test_create_dataset(games_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning\\ur_games',
+                        halflife=5):
+    """Backpropagation plot"""
     file_list = os.listdir(games_dir)
     file_list = [os.path.join(games_dir, name) for name in file_list if name.endswith('.pkl')]
 
-    file_list = file_list[:3]
+    file_list = [file_list[-8]]
 
     print(f'Games found: {len(file_list)}')
 
-    x, y_policy, y_value = create_dataset_from_game_files(file_list, halflife=10)
-    plt.plot(y_value)
-
+    plt.title('Value function training data')
+    x, y_policy, y_value = create_dataset_from_game_files(file_list, halflife=halflife)
+    plt.plot(y_value[:, 0], label=f'Player 1 (modified, halflife={halflife})')
+    plt.plot(y_value[:, 1], label=f'Player 2 (modified, halflife={halflife})')
     x, y_policy, y_value = create_dataset_from_game_files(file_list, halflife=0)
-    plt.plot(y_value, alpha=0.4)
-
+    plt.plot(y_value[:, 0], alpha=0.4, label='Player 1 (from search)')
+    plt.plot(y_value[:, 1], alpha=0.4, label='Player 2 (form search)')
+    plt.legend()
+    plt.xlabel('Move')
+    plt.ylabel('Value')
     plt.show()
 
 

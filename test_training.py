@@ -2,11 +2,15 @@ import pickle
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+
+import torch
+import torch.nn as nn
+import torch.optim as optim
+
 from training import Training
 from nn_agent import NNAgent
 from royal_game_of_ur import RoyalGameOfUr
 from training_data import create_dataset_from_game_files
-from test_example_states import STATES
 
 
 def show_self_play_data(path='database'):
@@ -41,7 +45,7 @@ def test_training_loop(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinfor
 
     training = Training(agent_instance=agent,
                         game_instance=RoyalGameOfUr(),
-                        games_dir=root_dir + 'ur_games'
+                        games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
     # load agents
@@ -55,7 +59,9 @@ def test_training_loop(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinfor
     training.convert_games_to_training_data()
 
     # train policy and value function
-    training._train_agent(n_epochs_policy=500, n_epochs_value=2000)
+    training._train_agent(n_epochs_policy=500,
+                          n_epochs_value=500,
+                          lr=0.01)
 
 
 def test_evaluation(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
@@ -87,21 +93,6 @@ def test_evaluation(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinforcem
     plt.show()
 
 
-def test_agent_decisions(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
-    """Test the agent's decisions on some example states"""
-    agent = NNAgent(game_instance=RoyalGameOfUr(),
-                    models_dir=os.path.join(root_dir, 'ur_models'),
-                    n_rollouts=100,
-                    rollout_depth=5)
-
-    for i, state in enumerate(STATES):
-        print(f'\nExample {i})\n')
-        game = RoyalGameOfUr().set_state(state)
-        print(game)
-        state_info = game.get_state_info()
-        agent.get_action(state_info, verbose=True)
-
-
 def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
     """Train the policy network"""
     agent = NNAgent(game_instance=RoyalGameOfUr(),
@@ -112,7 +103,16 @@ def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinf
                         games_dir=os.path.join(root_dir, 'ur_games'))
 
     # agent.reset_policy(input_size=82, hidden_units=16, output_size=16)
-    print(agent.policy)
+    input_size = 82
+    hidden_units = 100
+    output_size = 16
+    model = (
+        nn.Sequential(
+            nn.Linear(input_size, hidden_units),
+            nn.Sigmoid(),
+            nn.Linear(hidden_units, output_size),
+            nn.Softmax(dim=1)
+        ))
 
     training.convert_games_to_training_data()
 
@@ -129,7 +129,7 @@ def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinf
     dummy_ans = np.argmax(y_true.sum(axis=0))
     dummy_acc = np.mean(dummy_ans == y_true_values)
     print(f'\ndummy acc: {dummy_acc:.1%}')
-    print(f' accuracy: {accuracy:.1%}')
+    print(f' accuracy: {accuracy:.2%}')
 
     agent.train_policy(training.X, training.y_policy)
 
@@ -146,7 +146,7 @@ def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinf
     print()
 
     print(f'\ndummy acc: {dummy_acc:.1%}')
-    print(f' accuracy: {accuracy:.1%}')
+    print(f' accuracy: {accuracy:.2%}')
 
     # agent.save_models()
 
@@ -171,6 +171,5 @@ if __name__ == '__main__':
     # show_self_play_data()
     # test_training_loop()
     # test_evaluation()
-    # test_agent_decisions()
-    test_policy_training()
-    # test_policy()
+    # test_policy_training()
+    test_policy()

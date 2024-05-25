@@ -71,7 +71,7 @@ def backpropagation(v, halflife=20):
     """
     v = np.array(v)
     if halflife > 0:
-        k = np.exp(-np.log(2) / halflife)
+        k = np.exp(-np.log(2) / halflife)  # 2^(-1/x)
     else:
         k = 0.
     out = np.zeros_like(v)

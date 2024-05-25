@@ -35,6 +35,9 @@ class PolicyAgent(Agent):
         if self.policy is None:
             self.reset()
 
+    def __repr__(self):
+        return f"PolicyAgent(greedy={self.greedy})"
+
     def reset(self):
         self._load_from_path()
 
@@ -62,6 +65,59 @@ class PolicyAgent(Agent):
             action = np.random.choice(len(y[0]), p=y[0] / np.sum(y[0]))  # todo normalization?
 
         return {"action": action}
+
+
+class ValueAgent(Agent):
+    """This bot uses the value function to make decisions"""
+
+    def __init__(self, game_instance, value_function=None, value_path=None):
+        self.game_instance = game_instance
+        self.value_function = value_function
+        self.value_path = value_path
+
+        # set value function
+        if self.value_function is None:
+            self.reset()
+
+    def __repr__(self):
+        return f"ValueAgent()"
+
+    def reset(self):
+        self._load_from_path()
+
+    def _load_from_path(self):
+        """Load value function from path"""
+        if self.value_path is not None:
+            assert os.path.exists(self.value_path), 'File not found'
+            self.value_function = torch.load(self.value_path)
+            assert self.value_function is not None, 'Failed to load value function'
+
+    def get_action(self, state_info: dict, verbose=False) -> dict:
+        """
+        Evaluate all the possible moves and return the one
+        with the highest expected value.
+        """
+
+        assert self.value_function is not None
+        player_id = state_info["current_player"]
+        legal_moves = state_info["legal_moves"]
+        legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
+        values = np.zeros(len(legal_moves))
+
+        for i in range(len(legal_move_indices)):
+            state = self.game_instance.deepcopy()
+            state = state.set_state(state_info)
+            state.move(legal_move_indices[i])
+            features = state_to_features(state.get_state_info())
+            X = np.array([features])
+            X = torch.tensor(X, dtype=torch.float)
+            y = self.value_function(X).detach().numpy()
+            y = y[0]
+            values[i] = y[player_id]
+
+        # get best move
+        best_move = legal_move_indices[np.argmax(values)]
+        return {"action": best_move}
 
 
 class NNAgent(Agent):
@@ -218,6 +274,36 @@ class NNAgent(Agent):
         action = self.legal_indices[best_index]
         return {"action": action, "eval": evaluation}
 
+    def _print_search_results(self, state_info, ev, t, bar_length):
+        policy = self.call_policy(state_info)
+        value = self.evaluate_state(state_info)
+        print(f'\n>>> {self.n_rollouts} rollouts, depth {self.rollout_depth}')
+        print(f'\nvalue: {value[state_info["current_player"]]:.3f}')
+
+        color = 91 if state_info["current_player"] == 1 else 94
+        best_policy_index = int(np.argmax(policy[state_info["legal_moves"] > 0]))
+        best_value_index = int(np.argmax(ev))
+
+        print('\nPolicy:')
+        for i in range(self.n_moves):
+            p = policy[self.legal_indices[i]]
+            s = f'{self.legal_indices[i]:3}) {p:6.1%} '
+            s += f'[\033[{color}m' + '.' * int(p * bar_length) + '\033[0m]'
+            if i == best_policy_index:
+                s += ' <<'
+            print(s)
+
+        print('\nSearch EV:')
+        for i in range(self.n_moves):
+            p = ev[i]
+            s = f'{self.legal_indices[i]:3}) {p:6.1%} '
+            s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
+            if i == best_value_index:
+                s += ' <<'
+            print(s)
+
+        print(f"\nTime: {t:.2f} s\n")
+
     def get_action(self, state_info: dict, verbose=False, bar_length=30) -> dict:
         """
         For every possible move, the agent makes n_rollouts rollouts
@@ -233,42 +319,17 @@ class NNAgent(Agent):
             return {"action": self.legal_indices[0]}
 
         # rollouts
-        player_id = state_info["current_player"]
         for i in range(self.n_moves):
             for _ in range(self.n_rollouts):
-                self._visit(i, player_id=player_id)
+                self._visit(i, player_id=state_info["current_player"])
 
         # get index of best move
         ev = self.scores / self.visits
-        best_index = int(np.argmax(self.scores / self.visits))
 
         # print
         if verbose:
-            policy = self.call_policy(state_info)
-            value = self.evaluate_state(state_info)
-            print(f'\n>>> {self.n_rollouts} rollouts, depth {self.rollout_depth}')
-            print(f'value: {value[player_id]:.3f}')
-            print()
-
-            for i in range(self.n_moves):
-                color = 91 if player_id == 1 else 94
-
-                p_2 = policy[self.legal_indices[i]]
-                s_2 = f'{self.legal_indices[i]:3}: {p_2:6.1%}  |'
-                s_2 += f'\033[{color}m' + '.' * int(p_2 * bar_length) + '\033[0m'
-                print(s_2)
-
-                p = ev[i]
-                s = ' ' * 7 + f'{p:.3f} '
-                s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
-                if i == best_index:
-                    s += ' <<'
-                print(s)
-
-            # print(f'Best move: {self.legal_indices[best_index]}')
-            print()
             t = time() - t
-            print(f"Time: {t:.2f}s")
+            self._print_search_results(state_info, ev, t, bar_length)
 
         return self._get_output(state_info)
 
@@ -314,7 +375,7 @@ class NNAgent(Agent):
         # accuracy
         if verbose:
             acc = self._get_policy_accuracy(x, y)
-            print(f' accuracy: {acc:.1%}')
+            print(f' accuracy: {acc:.2%}')
 
         for epoch in range(n_epochs):
             if verbose and (epoch + 1) % print_period == 0:
@@ -331,12 +392,12 @@ class NNAgent(Agent):
 
             # performance
             if verbose and (epoch + 1) % print_period == 0:
-                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.5f}')
+                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.6f}')
 
         # accuracy
         if verbose:
             acc = self._get_policy_accuracy(x, y)
-            print(f' accuracy: {acc:.1%}')
+            print(f' accuracy: {acc:.2%}')
 
     def train_value_function(self, x, y,
                              n_epochs=1000, lr=0.1,
@@ -357,7 +418,7 @@ class NNAgent(Agent):
         # rmse
         if verbose:
             rmse = self._get_value_function_rmse(x, y)
-            print(f'     rmse: {rmse:.4f}')
+            print(f'     rmse: {rmse:.5f}')
 
         for epoch in range(n_epochs):
             if verbose and (epoch + 1) % print_period == 0:
@@ -374,12 +435,12 @@ class NNAgent(Agent):
 
             # performance
             if verbose and (epoch + 1) % print_period == 0:
-                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.5f}')
+                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.6f}')
 
         # rmse
         if verbose:
             rmse = self._get_value_function_rmse(x, y)
-            print(f'     rmse: {rmse:.4f}')
+            print(f'     rmse: {rmse:.5f}')
 
     def train_agent(self, x, y_policy, y_value,
                     n_epochs_policy=500, n_epochs_value=500,
