@@ -2,7 +2,7 @@ import os
 import numpy as np
 from agent import Agent
 from royal_game_of_ur import RoyalGameOfUr
-from nn_agent import NNAgent, PolicyAgent
+from nn_agent import NNAgent
 import matplotlib.pyplot as plt
 
 
@@ -77,22 +77,22 @@ def plot_game(game_recap):
     plt.show()
 
 
-def main(n_rollouts=200, rollout_depth=5,
-         root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
+def main(n_rollouts=200, rollout_depth=5, root_dir=os.getcwd()):
     """Play a game between two agents and print the result."""
-    agents = []
-
+    agents = list()
     # agents.append(HumanAgent())
 
     agents.append(NNAgent(game_instance=RoyalGameOfUr(),
-                          models_dir=os.path.join(root_dir, 'ur_models'),
+                          dir_path=os.path.join(root_dir, 'ur_models'),
                           n_rollouts=n_rollouts,
-                          rollout_depth=rollout_depth))
+                          rollout_depth=rollout_depth,
+                          verbose=True))
 
     agents.append(NNAgent(game_instance=RoyalGameOfUr(),
-                          models_dir=os.path.join(root_dir, 'ur_models'),
+                          dir_path=os.path.join(root_dir, 'ur_models'),
                           n_rollouts=n_rollouts,
-                          rollout_depth=20))
+                          rollout_depth=rollout_depth,
+                          verbose=True))
 
     # policy_path = os.path.join(root_dir, 'ur_models\\policy.pkl')
     # agents.append(PolicyAgent(policy_path=policy_path, greedy=True))

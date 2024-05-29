@@ -1,5 +1,4 @@
 import os.path
-
 import numpy as np
 from time import time
 
@@ -8,10 +7,10 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
-# from training import Training
 from royal_game_of_ur import RoyalGameOfUr
 from agent import Agent
 from training_data import state_to_features
+from evaluation import evaluation_match
 
 
 def initialize_weights(model, weight_range=0.1):
@@ -64,7 +63,7 @@ class PolicyAgent(Agent):
         else:
             action = np.random.choice(len(y[0]), p=y[0] / np.sum(y[0]))  # todo normalization?
 
-        return {"action": action}
+        return {"action": action, "eval": np.zeros(2)}
 
 
 class ValueAgent(Agent):
@@ -117,18 +116,19 @@ class ValueAgent(Agent):
 
         # get best move
         best_move = legal_move_indices[np.argmax(values)]
-        return {"action": best_move}
+        return {"action": best_move, "eval": np.zeros(2)}
 
 
 class NNAgent(Agent):
 
     def __init__(self,
                  game_instance,
-                 models_dir,
+                 dir_path,
                  n_rollouts=100,
-                 rollout_depth=5):
+                 rollout_depth=5,
+                 verbose=False):
         self.game = game_instance
-        self.dir_path = models_dir
+        self.dir_path = dir_path
         self.n_rollouts = n_rollouts
         self.rollout_depth = rollout_depth
 
@@ -139,11 +139,7 @@ class NNAgent(Agent):
         self.visits = None
         self.scores = None
         self.states = None
-
-        if not os.path.exists(models_dir):
-            os.makedirs(models_dir)
-
-        self.reset()
+        self.reset(verbose=verbose)
 
     def __repr__(self):
         return f"NNAgent(n_rollouts={self.n_rollouts}, rollout_depth={self.rollout_depth})"
@@ -174,10 +170,8 @@ class NNAgent(Agent):
         try:
             if verbose:
                 print(f'\n>>> Trying to load models from {self.dir_path}')
-            policy_path = f"{self.dir_path}\\policy.pkl"
-            value_function = f"{self.dir_path}\\value_function.pkl"
-            self.policy = torch.load(policy_path)
-            self.value_function = torch.load(value_function)
+            self.policy = torch.load(self.get_policy_path())
+            self.value_function = torch.load(self.get_value_function_path())
             if verbose:
                 print('>>> Models loaded successfully!')
         except FileNotFoundError:
@@ -190,8 +184,10 @@ class NNAgent(Agent):
         """Set the policy agent using the policy"""
         self.policy_agent = PolicyAgent(self.policy)
 
-    def reset(self):
-        self._set_policy_and_value_function()
+    def reset(self, verbose=False):
+        if not os.path.exists(self.dir_path):
+            os.makedirs(self.dir_path)
+        self._set_policy_and_value_function(verbose=verbose)
         self._set_policy_agent()
 
     def _reset_search(self, state_info):
@@ -209,6 +205,12 @@ class NNAgent(Agent):
                 state = state.set_state(state_info)
                 state.move(self.legal_indices[i])
                 self.states.append(state)
+
+    def get_policy_path(self):
+        return os.path.join(self.dir_path, "policy.pkl")
+
+    def get_value_function_path(self):
+        return os.path.join(self.dir_path, "value_function.pkl")
 
     def evaluate_state(self, state_info: dict):
         """
@@ -241,21 +243,16 @@ class NNAgent(Agent):
         """
         Rollout a state for rollout_depth moves
         """
-
         assert self.policy_agent is not None, "Policy agent is not set"
         game_recap = state.play(agents=[self.policy_agent, self.policy_agent],
                                 do_reset=False,
                                 max_depth=self._get_random_rollout_depth(),
                                 verbose=False)
-
-        reward = game_recap["reward"]
         state_info = state.get_state_info()
-        if reward is None:
-            reward = self.evaluate_state(state_info)
-
-        # print(reward)
-
-        return reward[player_id]
+        if game_recap["is_game_over"]:
+            return game_recap["reward"][player_id]
+        else:
+            return self.evaluate_state(state_info)[player_id]
 
     def _visit(self, move_index, player_id):
         """Update the visit and score arrays for a given move index"""
@@ -316,7 +313,9 @@ class NNAgent(Agent):
 
         # only legal move
         if self.n_moves == 1:
-            return {"action": self.legal_indices[0]}
+            action = self.legal_indices[0]
+            value = self.evaluate_state(state_info)
+            return {"action": action, "eval": value}
 
         # rollouts
         for i in range(self.n_moves):
@@ -453,5 +452,25 @@ class NNAgent(Agent):
         """Save the policy and value function to dir_path"""
         if verbose:
             print(f"\n>>> Saving models in {self.dir_path}")
-        torch.save(self.policy, f"{self.dir_path}\\policy.pkl")
-        torch.save(self.value_function, f"{self.dir_path}\\value_function.pkl")
+        torch.save(self.policy, self.get_policy_path())
+        torch.save(self.value_function, self.get_value_function_path())
+
+    def evaluate(self, n_games=500, show_game=False):
+        """ Evaluate the components of the agent (policy and value function) """
+        print(f'\nEvaluating agent on {n_games} games...')
+
+        # agents
+        random_agent = Agent()
+        opponents = []
+        opponents.append(PolicyAgent(policy_path=self.get_policy_path(), greedy=True))
+        opponents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=self.get_value_function_path()))
+
+        for opponent in opponents:
+            for order in range(2):
+                agents = [opponent, random_agent]
+                if order == 1:
+                    agents = list(reversed(agents))
+                print(f'\nAgent 1: {agents[0]}\nAgent 2: {agents[1]}\n')
+
+                # evaluation match
+                evaluation_match(*agents, n_games=n_games, show_game=show_game, player=order)

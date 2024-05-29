@@ -1,5 +1,4 @@
 import numpy as np
-from copy import deepcopy
 
 
 class Agent:
@@ -12,6 +11,18 @@ class Agent:
         and other info:
         - action: the action to take (*mandatory)
         - eval: the evaluation of the state (*optional)
+
+        Input example:
+        state_info = {"current_player": 0,
+                      "n_steps": 2,
+                      "round": 9,
+                      "board": np.array([7, 0, 0, 0, 0, 0, 0, 0,
+                                         0, 0, 0, 0, 0, 0, 0, 0,
+                                         7, 0, 0, 0, 0, 0, 0, 0,
+                                         0, 0, 0, 0, 0, 0, 0, 0]),
+                      "legal_moves": np.array([1., 0., 1., 0., 0., 0., 0., 0.,
+                                               0., 0., 0., 0., 0., 0., 0., 0.])
+                                               }
 
         Output example:
         {"action": 15, "eval": [0.5, 0.5]}
@@ -26,7 +37,7 @@ class Agent:
             legal_indices = np.arange(len(legal_moves))[legal_moves > 0]
             print(f'legal moves: {legal_indices}')
             print(f'action: {action}')
-        return {"action": action}
+        return {"action": action, "eval": [0.5, 0.5]}
 
     def reset(self):
         """Resets the agent to its initial state before the game."""
@@ -35,8 +46,8 @@ class Agent:
     def __call__(self, state_info, **kw):
         out = self.get_action(state_info, **kw)
         assert type(out) is dict
-        assert 'action' in out
-        # assert 'eval' in out
+        assert 'action' in out, f'{self} {out}'
+        assert 'eval' in out, f'{self} {out}'
         return out
 
     def __repr__(self):
