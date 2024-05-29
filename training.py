@@ -5,6 +5,7 @@ from training_data import create_dataset_from_game_files
 
 
 def special_func(x, x0, p):
+    """ Special function to determine the number of games to use """
     return (x + x0 ** (1 / p)) ** p
 
 
@@ -59,9 +60,7 @@ class Training:
         self.agents = None
 
     def _load_agents(self):
-        """
-        Create and set agents
-        """
+        """ Create and set agents """
         self.agents = (deepcopy(self.agent_instance),
                        deepcopy(self.agent_instance))
         for agent in self.agents:
@@ -79,9 +78,7 @@ class Training:
         game_copy.save(path=f"{self.games_dir}\\game_{n}.pkl", verbose=verbose)
 
     def _play_self_play_games(self, n_games, verbose=False):
-        """
-        Play self-play games and save them to the database
-        """
+        """ Play self-play games and save them to the database """
         for i in range(n_games):
             print(f'Playing game {i+1}/{n_games}')
             self.play_game(verbose=verbose)
@@ -120,6 +117,7 @@ class Training:
         self.agent_instance.save_models()
 
     def _evaluate_agent(self):
+        """Call the evaluate method of the agent if it exists"""
         if hasattr(self.agent_instance, 'evaluate'):
             print('\nEvaluating agent...')
             self.agent_instance.reset()
@@ -136,8 +134,8 @@ class Training:
         """
         for i in range(n_cycles):
             print(f'\n\n\nTraining cycle {i+1}/{n_cycles}')
-            # self._load_agents()
-            # self._play_self_play_games(n_games_per_cycle, verbose=verbose)
+            self._load_agents()
+            self._play_self_play_games(n_games_per_cycle, verbose=verbose)
             self._convert_games_to_training_data(min_n_games, halflife=halflife)
             self._train_agent(n_epochs_policy, n_epochs_value, lr=lr)
             self._evaluate_agent()
