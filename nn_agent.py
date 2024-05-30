@@ -22,6 +22,20 @@ def initialize_weights(model, weight_range=0.1):
             torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
 
 
+def bar(p, color=92, length=20):
+    p = min(1, max(0, p))
+    chars = '▏▎▍▌▋▊▉██'
+    n = int(p * length)
+    residue = p * length - n
+    out = f"{'█'*n}"
+    if residue:
+        i = int(residue * 8)
+        out += f'{chars[i]}'
+    out = out.ljust(length, ' ')
+    out = f"\033[{color}m{out}\033[0m"
+    return f"|{out}| {p:6.2%}"
+
+
 class PolicyAgent(Agent):
     """This bot uses the policy to make decisions"""
 
@@ -285,7 +299,9 @@ class NNAgent(Agent):
         for i in range(self.n_moves):
             p = policy[self.legal_indices[i]]
             s = f'{self.legal_indices[i]:3}) {p:6.1%} '
-            s += f'[\033[{color}m' + '.' * int(p * bar_length) + '\033[0m]'
+
+            s += bar(p, color, length=bar_length)
+            # s += f'[\033[{color}m' + '.' * int(p * bar_length) + '\033[0m]'
             if i == best_policy_index:
                 s += ' <<'
             print(s)
@@ -294,14 +310,16 @@ class NNAgent(Agent):
         for i in range(self.n_moves):
             p = ev[i]
             s = f'{self.legal_indices[i]:3}) {p:6.1%} '
-            s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
+
+            s += bar(p, color, length=bar_length)
+            # s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
             if i == best_value_index:
                 s += ' <<'
             print(s)
 
         print(f"\nTime: {t:.2f} s\n")
 
-    def get_action(self, state_info: dict, verbose=False, bar_length=30) -> dict:
+    def get_action(self, state_info: dict, verbose=False, bar_length=20) -> dict:
         """
         For every possible move, the agent makes n_rollouts rollouts
         and evaluates the position after rollout_depth moves using
