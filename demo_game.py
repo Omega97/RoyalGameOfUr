@@ -2,7 +2,7 @@ import os
 import numpy as np
 from agent import Agent
 from royal_game_of_ur import RoyalGameOfUr
-from nn_agent import NNAgent
+from nn_agent import NNAgent, PolicyAgent, ValueAgent
 import matplotlib.pyplot as plt
 
 
@@ -30,7 +30,7 @@ class HumanAgent(Agent):
             action = move_indices[0]
             print(f'legal moves: {move_indices}')
             print(f'only one move available: {action}')
-            return {"action": action}
+            return {"action": action, "eval": np.ones(2) * 0.5}
         else:
             print(f'legal moves: {move_indices}')
             while True:
@@ -41,7 +41,7 @@ class HumanAgent(Agent):
                 except Exception:
                     pass
             assert action in move_indices, f'invalid move {action}'
-            return {"action": action}
+            return {"action": action, "eval": np.ones(2) * 0.5}
 
 
 def play_game(agent_1, agent_2, verbose):
@@ -52,34 +52,34 @@ def play_game(agent_1, agent_2, verbose):
 
 
 def plot_game(game_recap):
-    x1 = []
-    y1 = []
-    x2 = []
-    y2 = []
-
-    for i in range(len(game_recap["player_eval"])):
-        v1, v2 = game_recap["player_eval"][i]
-        if v1 is not None:
-            x1.append(i)
-            y1.append(v1)
-        if v2 is not None:
-            x2.append(i)
-            y2.append(v2)
+    n_rounds = len(game_recap["player_eval"])
+    v = np.array(game_recap["player_on_duty"], dtype=int)
+    x1 = list(np.arange(n_rounds)[v==0])
+    x2 = list(np.arange(n_rounds)[v==1])
+    y1 = [game_recap["player_eval"][t][0] for t in x1]
+    y2 = [game_recap["player_eval"][t][1] for t in x2]
+    x1.append(n_rounds)
+    x2.append(n_rounds)
+    y1.append(game_recap["reward"][0])
+    y2.append(game_recap["reward"][1])
 
     plt.title('Game evaluation')
-    plt.plot(x1, y1, label='player 1', alpha=0.3)
-    plt.plot(x2, y2, label='player 2', alpha=0.3)
-    plt.scatter(x1, y1, s=3)
-    plt.scatter(x2, y2, s=3)
+    plt.plot(x1, y1, label=game_recap["players"][0], alpha=0.5)
+    plt.plot(x2, y2, label=game_recap["players"][1], alpha=0.5)
+    plt.scatter(x1, y1, s=6)
+    plt.scatter(x2, y2, s=6)
     plt.xlabel('turn')
     plt.ylabel('evaluation')
     plt.legend()
+    plt.ylim(0, 1)
     plt.show()
 
 
-def main(n_rollouts=200, rollout_depth=5, root_dir=os.getcwd()):
+def main(n_rollouts=100, rollout_depth=3, root_dir=os.getcwd()):
     """Play a game between two agents and print the result."""
     agents = list()
+
+    # human
     # agents.append(HumanAgent())
 
     agents.append(NNAgent(game_instance=RoyalGameOfUr(),
@@ -88,25 +88,31 @@ def main(n_rollouts=200, rollout_depth=5, root_dir=os.getcwd()):
                           rollout_depth=rollout_depth,
                           verbose=True))
 
-    agents.append(NNAgent(game_instance=RoyalGameOfUr(),
-                          dir_path=os.path.join(root_dir, 'ur_models'),
-                          n_rollouts=n_rollouts,
-                          rollout_depth=rollout_depth,
-                          verbose=True))
+    # agents.append(NNAgent(game_instance=RoyalGameOfUr(),
+    #                       dir_path=os.path.join(root_dir, 'ur_models'),
+    #                       n_rollouts=n_rollouts * 3,
+    #                       rollout_depth=rollout_depth,
+    #                       verbose=True))
 
-    # policy_path = os.path.join(root_dir, 'ur_models\\policy.pkl')
-    # agents.append(PolicyAgent(policy_path=policy_path, greedy=True))
+    policy_path = os.path.join(root_dir, 'ur_models\\policy.pkl')
+    agents.append(PolicyAgent(policy_path=policy_path, greedy=True))
+
+    # value_path = os.path.join(root_dir, 'ur_models\\value_function.pkl')
+    # agents.append(ValueAgent(game_instance=RoyalGameOfUr(),
+    #                          value_path=value_path,
+    #                          verbose=True))
 
     # agents.append(Agent())
     # agents.append(Agent())
 
+    # swap players
     # agents = list(reversed(agents))
 
     assert len(agents) == 2
 
     recap = play_game(*agents, verbose=True)
-    for k in ["players", "rolls", "player_moves", "reward"]:
-        print(f"{k:>12}:  {recap[k]}")
+    for k in ["players", "rolls", "player_moves", "player_on_duty", "reward"]:
+        print(f"{k:>15}:  {recap[k]}")
 
     plot_game(recap)
 

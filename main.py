@@ -2,6 +2,7 @@ import os
 from training import Training
 from nn_agent import NNAgent
 from royal_game_of_ur import RoyalGameOfUr
+# todo save player on duty
 # todo save state to record when setting state
 # todo rollouts in parallel
 # todo if there is data, start with training
@@ -25,12 +26,12 @@ def main():
                         games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
-    training.run(n_cycles=20,
-                 n_games_per_cycle=2,
+    training.run(n_cycles=99,
+                 n_games_per_cycle=20,
                  n_epochs_policy=500,
                  n_epochs_value=500,
                  halflife=1,
-                 lr=0.1,
+                 lr=0.01,
                  verbose=False)
 
 

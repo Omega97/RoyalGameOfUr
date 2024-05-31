@@ -5,7 +5,11 @@ from training_data import create_dataset_from_game_files
 
 
 def special_func(x, x0, p):
-    """ Special function to determine the number of games to use """
+    """ Special function to determine the number of games to use
+    * lim(x-f(x), x->inf) = inf  (every data point eventually fades out of the dataset)
+    * lim(f(x), x->inf) = inf    (the dataset size tends to grow to infinity)
+    * lim(f(x) / x, x->inf) = 0  (the size of the dataset grows slower than x)
+    """
     return (x + x0 ** (1 / p)) ** p
 
 
@@ -59,12 +63,12 @@ class Training:
 
         self.agents = None
 
-    def _load_agents(self):
+    def _load_agents(self, verbose=False):
         """ Create and set agents """
         self.agents = (deepcopy(self.agent_instance),
                        deepcopy(self.agent_instance))
         for agent in self.agents:
-            agent.reset()
+            agent.reset(verbose=verbose)
 
     def play_game(self, verbose=False):
         """
@@ -89,7 +93,7 @@ class Training:
         n_games = int(special_func(len(game_files), x0=min_n_games, p=p))
         return game_files[-n_games:]
 
-    def _convert_games_to_training_data(self, min_n_games=20, halflife=1):
+    def _convert_games_to_training_data(self, min_n_games=30, halflife=1):
         """
         Convert the games played by the agent to training data
         and store them in the instance variables X, y_policy, y_value
@@ -133,8 +137,8 @@ class Training:
         - train the agent, save the new model in the same directory
         """
         for i in range(n_cycles):
-            print(f'\n\n\nTraining cycle {i+1}/{n_cycles}')
-            self._load_agents()
+            print(f'\n\nTraining cycle {i+1}/{n_cycles}\n')
+            self._load_agents(verbose=verbose)
             self._play_self_play_games(n_games_per_cycle, verbose=verbose)
             self._convert_games_to_training_data(min_n_games, halflife=halflife)
             self._train_agent(n_epochs_policy, n_epochs_value, lr=lr)

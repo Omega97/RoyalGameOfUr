@@ -11,6 +11,7 @@ from royal_game_of_ur import RoyalGameOfUr
 from agent import Agent
 from training_data import state_to_features
 from evaluation import evaluation_match
+from misc import bar
 
 
 def initialize_weights(model, weight_range=0.1):
@@ -20,20 +21,6 @@ def initialize_weights(model, weight_range=0.1):
         if isinstance(layer, nn.Linear):
             torch.nn.init.uniform_(layer.weight, -weight_range, weight_range)
             torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
-
-
-def bar(p, color=92, length=20):
-    p = min(1, max(0, p))
-    chars = '▏▎▍▌▋▊▉██'
-    n = int(p * length)
-    residue = p * length - n
-    out = f"{'█'*n}"
-    if residue:
-        i = int(residue * 8)
-        out += f'{chars[i]}'
-    out = out.ljust(length, ' ')
-    out = f"\033[{color}m{out}\033[0m"
-    return f"|{out}| {p:6.2%}"
 
 
 class PolicyAgent(Agent):
@@ -77,16 +64,17 @@ class PolicyAgent(Agent):
         else:
             action = np.random.choice(len(y[0]), p=y[0] / np.sum(y[0]))  # todo normalization?
 
-        return {"action": action, "eval": np.zeros(2)}
+        return {"action": action, "eval": np.ones(2) * 0.5}
 
 
 class ValueAgent(Agent):
     """This bot uses the value function to make decisions"""
 
-    def __init__(self, game_instance, value_function=None, value_path=None):
+    def __init__(self, game_instance, value_function=None, value_path=None, verbose=False):
         self.game_instance = game_instance
         self.value_function = value_function
         self.value_path = value_path
+        self.verbose = verbose
 
         # set value function
         if self.value_function is None:
@@ -96,6 +84,8 @@ class ValueAgent(Agent):
         return f"ValueAgent()"
 
     def reset(self):
+        if self.verbose:
+            print('Loading value function')
         self._load_from_path()
 
     def _load_from_path(self):
@@ -104,13 +94,14 @@ class ValueAgent(Agent):
             assert os.path.exists(self.value_path), 'File not found'
             self.value_function = torch.load(self.value_path)
             assert self.value_function is not None, 'Failed to load value function'
+            if self.verbose:
+                print('Value function loaded')
 
     def get_action(self, state_info: dict, verbose=False) -> dict:
         """
         Evaluate all the possible moves and return the one
         with the highest expected value.
         """
-
         assert self.value_function is not None
         player_id = state_info["current_player"]
         legal_moves = state_info["legal_moves"]
@@ -130,7 +121,17 @@ class ValueAgent(Agent):
 
         # get best move
         best_move = legal_move_indices[np.argmax(values)]
-        return {"action": best_move, "eval": np.zeros(2)}
+        best_eval = max(values)
+        eval_ = [best_eval, 1-best_eval]
+        if player_id == 1:
+            eval_ = list(reversed(eval_))
+        eval_ = np.array(eval_)
+
+        if self.verbose:
+            print(f'action {best_move}')
+            print(f'  eval {best_eval:.3f}')
+
+        return {"action": best_move, "eval": eval_}
 
 
 class NNAgent(Agent):
@@ -139,12 +140,17 @@ class NNAgent(Agent):
                  game_instance,
                  dir_path,
                  n_rollouts=100,
-                 rollout_depth=5,
+                 rollout_depth=3,
+                 hidden_units=100,
+                 reward_half_life=20,
+                 greedy=False,
                  verbose=False):
         self.game = game_instance
         self.dir_path = dir_path
         self.n_rollouts = n_rollouts
         self.rollout_depth = rollout_depth
+        self.greedy = greedy
+        self.gamma = np.log(2) / reward_half_life
 
         self.policy = None
         self.value_function = None
@@ -153,10 +159,12 @@ class NNAgent(Agent):
         self.visits = None
         self.scores = None
         self.states = None
-        self.reset(verbose=verbose)
+        self.reset(hidden_units=hidden_units, verbose=verbose)
 
     def __repr__(self):
-        return f"NNAgent(n_rollouts={self.n_rollouts}, rollout_depth={self.rollout_depth})"
+        return (f"NNAgent(n_rollouts={self.n_rollouts}, "
+                f"rollout_depth={self.rollout_depth}, "
+                f"greedy={self.greedy})")
 
     def reset_policy(self, input_size, hidden_units, output_size):
         """ MLP Policy """
@@ -196,15 +204,16 @@ class NNAgent(Agent):
 
     def _set_policy_agent(self):
         """Set the policy agent using the policy"""
-        self.policy_agent = PolicyAgent(self.policy)
+        self.policy_agent = PolicyAgent(self.policy, greedy=self.greedy)
 
-    def reset(self, verbose=False):
+    def reset(self, hidden_units=100, verbose=False):
         if not os.path.exists(self.dir_path):
             os.makedirs(self.dir_path)
-        self._set_policy_and_value_function(verbose=verbose)
+        self._set_policy_and_value_function(hidden_units=hidden_units)
         self._set_policy_agent()
 
     def _reset_search(self, state_info):
+        """Reset the search for a new state"""
         self.legal_indices = np.arange(len(state_info["legal_moves"]))[state_info["legal_moves"] > 0]
         self.n_moves = len(self.legal_indices)
 
@@ -251,29 +260,31 @@ class NNAgent(Agent):
         Get a random number between 1 and self.rollout_depth, or
         None if self.rollout_depth is None.
         """
-        return self.rollout_depth  # todo implement
+        return np.random.randint(1, self.rollout_depth + 1)
 
     def _rollout(self, state: RoyalGameOfUr, player_id):
         """
         Rollout a state for rollout_depth moves
         """
         assert self.policy_agent is not None, "Policy agent is not set"
+        depth = self._get_random_rollout_depth()
         game_recap = state.play(agents=[self.policy_agent, self.policy_agent],
                                 do_reset=False,
-                                max_depth=self._get_random_rollout_depth(),
+                                max_depth=depth,
                                 verbose=False)
         state_info = state.get_state_info()
+        weight = np.exp(-depth * self.gamma)
         if game_recap["is_game_over"]:
-            return game_recap["reward"][player_id]
+            return game_recap["reward"][player_id], weight
         else:
-            return self.evaluate_state(state_info)[player_id]
+            return self.evaluate_state(state_info)[player_id], weight
 
     def _visit(self, move_index, player_id):
         """Update the visit and score arrays for a given move index"""
         state = self.states[move_index].deepcopy()  # without deepcopy, this doesn't work
-        value = self._rollout(state, player_id)
-        self.visits[move_index] += 1
-        self.scores[move_index] += value
+        value, weight = self._rollout(state, player_id)
+        self.visits[move_index] += weight
+        self.scores[move_index] += value * weight
 
     def _get_output(self, state_info: dict):
         """After all the process to get the action and state evaluation
@@ -298,7 +309,7 @@ class NNAgent(Agent):
         print('\nPolicy:')
         for i in range(self.n_moves):
             p = policy[self.legal_indices[i]]
-            s = f'{self.legal_indices[i]:3}) {p:6.1%} '
+            s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
 
             s += bar(p, color, length=bar_length)
             # s += f'[\033[{color}m' + '.' * int(p * bar_length) + '\033[0m]'
@@ -309,7 +320,7 @@ class NNAgent(Agent):
         print('\nSearch EV:')
         for i in range(self.n_moves):
             p = ev[i]
-            s = f'{self.legal_indices[i]:3}) {p:6.1%} '
+            s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
 
             s += bar(p, color, length=bar_length)
             # s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
@@ -319,13 +330,16 @@ class NNAgent(Agent):
 
         print(f"\nTime: {t:.2f} s\n")
 
-    def get_action(self, state_info: dict, verbose=False, bar_length=20) -> dict:
+    def get_action(self, state_info: dict, verbose=False, bar_length=30, half_life=10) -> dict:
         """
         For every possible move, the agent makes n_rollouts rollouts
         and evaluates the position after rollout_depth moves using
         the value function. Return the move with the highest expected value.
+        :param state_info:
+        :param verbose:
+        :param bar_length: when printing output
+        :param half_life: reward half-life
         """
-        # todo run simulations in parallel
         t = time()
         self._reset_search(state_info)
 
@@ -479,7 +493,7 @@ class NNAgent(Agent):
 
         # agents
         random_agent = Agent()
-        opponents = []
+        opponents = list()
         opponents.append(PolicyAgent(policy_path=self.get_policy_path(), greedy=True))
         opponents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=self.get_value_function_path()))
 

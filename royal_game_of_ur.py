@@ -302,6 +302,7 @@ class RoyalGameOfUr(Game):
         return {"players": (str(self.agents[0]), str(self.agents[1])),
                 "reward": self.get_reward(),
                 "game_record": self.game_record,
+                "player_on_duty": tuple([s["current_player"] for s in self.game_record]),  # todo check
                 "rolls": self.rolls_record,
                 "player_moves": self.player_moves,
                 "player_eval": self.evaluations,
