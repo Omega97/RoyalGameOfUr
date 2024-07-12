@@ -1,9 +1,9 @@
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from game.royal_game_of_ur import RoyalGameOfUr
 from agents.random_agent import RandomAgent
-from agents.nn_agent import NNAgent
+from agents.value_agent import ValueAgent
+from agents.nn_value_agent import NNValueAgent
 
 
 def plot_game(game_recap):
@@ -52,21 +52,24 @@ def demo_game_random():
     play_game(*agents, do_plot=False)
 
 
-def demo_game_nn_agent(n_rollouts=100, rollout_depth=3, root_dir=os.getcwd()):
+def demo_game_value_agent(value_path='..data/ur_models/model.pkl'):
     """Play a game between two NN-based agents and print the result"""
     agents = list()
 
-    agents.append(NNAgent(game_instance=RoyalGameOfUr(),
-                          dir_path=os.path.join(root_dir, 'ur_models'),
-                          n_rollouts=n_rollouts,
-                          rollout_depth=rollout_depth,
-                          verbose=True))
+    agents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=value_path))
+    agents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=value_path))
 
-    agents.append(NNAgent(game_instance=RoyalGameOfUr(),
-                          dir_path=os.path.join(root_dir, 'ur_models'),
-                          n_rollouts=n_rollouts,
-                          rollout_depth=rollout_depth,
-                          verbose=True))
+    assert len(agents) == 2
+
+    play_game(*agents, do_plot=False)
+
+
+def demo_game_nn_value_agent(dir_path='data/ur_models'):
+    """Play a game between two NN-based agents and print the result"""
+    agents = list()
+
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), dir_path=dir_path))
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), dir_path=dir_path))
 
     assert len(agents) == 2
 
@@ -74,5 +77,6 @@ def demo_game_nn_agent(n_rollouts=100, rollout_depth=3, root_dir=os.getcwd()):
 
 
 if __name__ == '__main__':
-    demo_game_random()
-    # demo_game_nn_agent()
+    # demo_game_random()
+    # demo_game_value_agent()
+    demo_game_nn_value_agent()
