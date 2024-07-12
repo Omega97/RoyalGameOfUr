@@ -1,5 +1,5 @@
 import os
-from game.training import Training
+from agents.training import Training
 from agents.nn_agent import NNAgent
 from game.royal_game_of_ur import RoyalGameOfUr
 # todo save player on duty
