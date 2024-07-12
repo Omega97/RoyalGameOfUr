@@ -1,17 +1,15 @@
-import os.path
+import os
 import numpy as np
 from time import time
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-
 from game.royal_game_of_ur import RoyalGameOfUr
 from game.agent import Agent
-from game.training_data import state_to_features
 from game.evaluation import evaluation_match
-from misc import bar
+from agents.training_data import state_to_features
+from src.utils import bar
 
 
 def initialize_weights(model, weight_range=0.1):
@@ -53,9 +51,9 @@ class PolicyAgent(Agent):
         probability distribution of the policy"""
         assert self.policy is not None
         features = state_to_features(state_info)
-        X = np.array([features])
-        X = torch.tensor(X, dtype=torch.float)
-        y = self.policy(X).detach().numpy()
+        x = np.array([features])
+        x = torch.tensor(x, dtype=torch.float)
+        y = self.policy(x).detach().numpy()
         y *= state_info["legal_moves"]
         assert np.sum(y) > 0, "No legal moves"
 
@@ -113,9 +111,9 @@ class ValueAgent(Agent):
             state = state.set_state(state_info)
             state.move(legal_move_indices[i])
             features = state_to_features(state.get_state_info())
-            X = np.array([features])
-            X = torch.tensor(X, dtype=torch.float)
-            y = self.value_function(X).detach().numpy()
+            x = np.array([features])
+            x = torch.tensor(x, dtype=torch.float)
+            y = self.value_function(x).detach().numpy()
             y = y[0]
             values[i] = y[player_id]
 
@@ -240,9 +238,9 @@ class NNAgent(Agent):
         Evaluate a state using the value function
         """
         features = state_to_features(state_info)
-        X = np.array([features])
-        X = torch.tensor(X, dtype=torch.float)
-        y = self.value_function(X).detach().numpy()
+        x = np.array([features])
+        x = torch.tensor(x, dtype=torch.float)
+        y = self.value_function(x).detach().numpy()
         return y[0]
 
     def call_policy(self, state_info: dict):
@@ -250,9 +248,9 @@ class NNAgent(Agent):
         Call the policy in the state
         """
         features = state_to_features(state_info)
-        X = np.array([features])
-        X = torch.tensor(X, dtype=torch.float)
-        y = self.policy(X).detach().numpy()
+        x = np.array([features])
+        x = torch.tensor(x, dtype=torch.float)
+        y = self.policy(x).detach().numpy()
         return y[0]
 
     def _get_random_rollout_depth(self):
