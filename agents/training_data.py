@@ -4,7 +4,7 @@ import torch
 
 
 def one_hot_encode(n, size):
-    """ One hot encoding of n in a vector of size """
+    """ One hot encoding of n in a vector of given size """
     v = [0] * size
     v[n] = 1
     return v
