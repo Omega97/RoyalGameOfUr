@@ -43,12 +43,17 @@ class Agent:
         """Resets the agent to its initial state before the game."""
         pass
 
-    def __call__(self, state_info, **kw):
+    def __call__(self, state_info, **kw) -> dict:
+        """
+        Returns the agent's action on a given state
+        as a dictionary of "action" and "eval"
+        """
         out = self.get_action(state_info, **kw)
         assert type(out) is dict
-        assert 'action' in out, f'{self} {out}'
-        assert 'eval' in out, f'{self} {out}'
+        for key in ('action', 'eval'):
+            assert key in out, f'{self} {out}'
         return out
 
     def __repr__(self):
+        """Name of the agent"""
         return f"{type(self).__name__}()"
