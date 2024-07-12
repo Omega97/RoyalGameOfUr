@@ -1,16 +1,17 @@
 import os.path
-
 import numpy as np
 from time import time
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
 
-# from training import Training
 from royal_game_of_ur import RoyalGameOfUr
 from agent import Agent
 from training_data import state_to_features
+from evaluation import evaluation_match
+from misc import bar
 
 
 def initialize_weights(model, weight_range=0.1):
@@ -22,62 +23,134 @@ def initialize_weights(model, weight_range=0.1):
             torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
 
 
-def create_policy(input_size, hidden_units, output_size, weight_range=0.01):
-    """ MLP Policy """
-    policy = nn.Sequential(
-        nn.Linear(input_size, hidden_units),
-        nn.Sigmoid(),
-        nn.Linear(hidden_units, output_size),
-        nn.Softmax(dim=1)
-    )
-
-    initialize_weights(policy, weight_range)
-
-    return policy
-
-
-def create_value_function(input_size, hidden_units, output_size, weight_range=0.01):
-    """ MLP value function """
-    value_function = nn.Sequential(
-        nn.Linear(input_size, hidden_units),
-        nn.Sigmoid(),
-        nn.Linear(hidden_units, output_size),
-        nn.Sigmoid()
-    )
-
-    initialize_weights(value_function, weight_range)
-
-    return value_function
-
-
 class PolicyAgent(Agent):
     """This bot uses the policy to make decisions"""
 
-    def __init__(self, policy):
+    def __init__(self, policy=None, greedy=False, policy_path=None):
         self.policy = policy
+        self.greedy = greedy
+        self.policy_path = policy_path
+
+        # set policy
+        if self.policy is None:
+            self.reset()
+
+    def __repr__(self):
+        return f"PolicyAgent(greedy={self.greedy})"
+
+    def reset(self):
+        self._load_from_path()
+
+    def _load_from_path(self):
+        """Load policy from path"""
+        if self.policy_path is not None:
+            assert os.path.exists(self.policy_path), 'File not found'
+            self.policy = torch.load(self.policy_path)
+            assert self.policy is not None, 'Failed to load policy'
 
     def get_action(self, state_info: dict, verbose=False) -> dict:
-        """Get the action with the highest probability from the policy"""
+        """Sample a random action according to the
+        probability distribution of the policy"""
+        assert self.policy is not None
         features = state_to_features(state_info)
         X = np.array([features])
         X = torch.tensor(X, dtype=torch.float)
         y = self.policy(X).detach().numpy()
         y *= state_info["legal_moves"]
-        action = int(np.argmax(y[0]))
-        return {"action": action}
+        assert np.sum(y) > 0, "No legal moves"
+
+        if self.greedy:
+            action = int(np.argmax(y[0]))
+        else:
+            action = np.random.choice(len(y[0]), p=y[0] / np.sum(y[0]))  # todo normalization?
+
+        return {"action": action, "eval": np.ones(2) * 0.5}
+
+
+class ValueAgent(Agent):
+    """This bot uses the value function to make decisions"""
+
+    def __init__(self, game_instance, value_function=None, value_path=None, verbose=False):
+        self.game_instance = game_instance
+        self.value_function = value_function
+        self.value_path = value_path
+        self.verbose = verbose
+
+        # set value function
+        if self.value_function is None:
+            self.reset()
+
+    def __repr__(self):
+        return f"ValueAgent()"
+
+    def reset(self):
+        if self.verbose:
+            print('Loading value function')
+        self._load_from_path()
+
+    def _load_from_path(self):
+        """Load value function from path"""
+        if self.value_path is not None:
+            assert os.path.exists(self.value_path), 'File not found'
+            self.value_function = torch.load(self.value_path)
+            assert self.value_function is not None, 'Failed to load value function'
+            if self.verbose:
+                print('Value function loaded')
+
+    def get_action(self, state_info: dict, verbose=False) -> dict:
+        """
+        Evaluate all the possible moves and return the one
+        with the highest expected value.
+        """
+        assert self.value_function is not None
+        player_id = state_info["current_player"]
+        legal_moves = state_info["legal_moves"]
+        legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
+        values = np.zeros(len(legal_moves))
+
+        for i in range(len(legal_move_indices)):
+            state = self.game_instance.deepcopy()
+            state = state.set_state(state_info)
+            state.move(legal_move_indices[i])
+            features = state_to_features(state.get_state_info())
+            X = np.array([features])
+            X = torch.tensor(X, dtype=torch.float)
+            y = self.value_function(X).detach().numpy()
+            y = y[0]
+            values[i] = y[player_id]
+
+        # get best move
+        best_move = legal_move_indices[np.argmax(values)]
+        best_eval = max(values)
+        eval_ = [best_eval, 1-best_eval]
+        if player_id == 1:
+            eval_ = list(reversed(eval_))
+        eval_ = np.array(eval_)
+
+        if self.verbose:
+            print(f'action {best_move}')
+            print(f'  eval {best_eval:.3f}')
+
+        return {"action": best_move, "eval": eval_}
 
 
 class NNAgent(Agent):
 
     def __init__(self,
                  game_instance,
-                 models_dir,
+                 dir_path,
                  n_rollouts=100,
-                 rollout_depth=20):
+                 rollout_depth=3,
+                 hidden_units=100,
+                 reward_half_life=20,
+                 greedy=False,
+                 verbose=False):
         self.game = game_instance
-        self.dir_path = models_dir
+        self.dir_path = dir_path
         self.n_rollouts = n_rollouts
         self.rollout_depth = rollout_depth
+        self.greedy = greedy
+        self.gamma = np.log(2) / reward_half_life
 
         self.policy = None
         self.value_function = None
@@ -86,39 +159,61 @@ class NNAgent(Agent):
         self.visits = None
         self.scores = None
         self.states = None
-
-        if not os.path.exists(models_dir):
-            os.makedirs(models_dir)
-
-        self.reset()
+        self.reset(hidden_units=hidden_units, verbose=verbose)
 
     def __repr__(self):
-        return f"NNAgent(n_rollouts={self.n_rollouts}, rollout_depth={self.rollout_depth})"
+        return (f"NNAgent(n_rollouts={self.n_rollouts}, "
+                f"rollout_depth={self.rollout_depth}, "
+                f"greedy={self.greedy})")
 
-    def _set_policy_and_value_function(self, input_size=82, hidden_units=100, n_moves=16, verbose=True):
+    def reset_policy(self, input_size, hidden_units, output_size):
+        """ MLP Policy """
+        self.policy = (
+            nn.Sequential(
+                nn.Linear(input_size, hidden_units),
+                nn.Sigmoid(),
+                nn.Linear(hidden_units, output_size),
+                nn.Softmax(dim=1)
+            ))
+
+    def reset_value_function(self, input_size, hidden_units, output_size, weight_range=0.01):
+        """ MLP value function """
+        self.value_function = (
+            nn.Sequential(
+                nn.Linear(input_size, hidden_units),
+                nn.Sigmoid(),
+                nn.Linear(hidden_units, output_size),
+                nn.Sigmoid()
+            ))
+        initialize_weights(self.value_function, weight_range)
+
+    def _set_policy_and_value_function(self, input_size=82, hidden_units=16, n_moves=16, verbose=False):
         """Try loading policy.pkl and value_function.pkl from dir_path, otherwise create new ones"""
         try:
             if verbose:
                 print(f'\n>>> Trying to load models from {self.dir_path}')
-            policy_path = f"{self.dir_path}\\policy.pkl"
-            value_function = f"{self.dir_path}\\value_function.pkl"
-            self.policy = torch.load(policy_path)
-            self.value_function = torch.load(value_function)
-            print('>>> Models loaded successfully!')
+            self.policy = torch.load(self.get_policy_path())
+            self.value_function = torch.load(self.get_value_function_path())
+            if verbose:
+                print('>>> Models loaded successfully!')
         except FileNotFoundError:
-            print('\n>>> Loading failed; creating new models...')
-            self.policy = create_policy(input_size=input_size, hidden_units=hidden_units, output_size=n_moves)
-            self.value_function = create_value_function(input_size=input_size, hidden_units=hidden_units, output_size=2)
+            if verbose:
+                print('\n>>> Loading failed. Creating new models...')
+            self.reset_policy(input_size=input_size, hidden_units=hidden_units, output_size=n_moves)
+            self.reset_value_function(input_size=input_size, hidden_units=hidden_units, output_size=2)
 
     def _set_policy_agent(self):
         """Set the policy agent using the policy"""
-        self.policy_agent = PolicyAgent(self.policy)
+        self.policy_agent = PolicyAgent(self.policy, greedy=self.greedy)
 
-    def reset(self):
-        self._set_policy_and_value_function()
+    def reset(self, hidden_units=100, verbose=False):
+        if not os.path.exists(self.dir_path):
+            os.makedirs(self.dir_path)
+        self._set_policy_and_value_function(hidden_units=hidden_units)
         self._set_policy_agent()
 
     def _reset_search(self, state_info):
+        """Reset the search for a new state"""
         self.legal_indices = np.arange(len(state_info["legal_moves"]))[state_info["legal_moves"] > 0]
         self.n_moves = len(self.legal_indices)
 
@@ -129,10 +224,16 @@ class NNAgent(Agent):
 
             # create a list of states after each move
             for i in range(self.n_moves):
-                state = self.game.deepcopy()             # without deepcopy, this doesn't work
+                state = self.game.deepcopy()  # without deepcopy, this doesn't work
                 state = state.set_state(state_info)
                 state.move(self.legal_indices[i])
                 self.states.append(state)
+
+    def get_policy_path(self):
+        return os.path.join(self.dir_path, "policy.pkl")
+
+    def get_value_function_path(self):
+        return os.path.join(self.dir_path, "value_function.pkl")
 
     def evaluate_state(self, state_info: dict):
         """
@@ -159,34 +260,31 @@ class NNAgent(Agent):
         Get a random number between 1 and self.rollout_depth, or
         None if self.rollout_depth is None.
         """
-        return self.rollout_depth   # todo implement
+        return np.random.randint(1, self.rollout_depth + 1)
 
     def _rollout(self, state: RoyalGameOfUr, player_id):
         """
         Rollout a state for rollout_depth moves
         """
-
         assert self.policy_agent is not None, "Policy agent is not set"
+        depth = self._get_random_rollout_depth()
         game_recap = state.play(agents=[self.policy_agent, self.policy_agent],
                                 do_reset=False,
-                                max_depth=self._get_random_rollout_depth(),
+                                max_depth=depth,
                                 verbose=False)
-
-        reward = game_recap["reward"]
         state_info = state.get_state_info()
-        if reward is None:
-            reward = self.evaluate_state(state_info)
-
-        # print(reward)
-
-        return reward[player_id]
+        weight = np.exp(-depth * self.gamma)
+        if game_recap["is_game_over"]:
+            return game_recap["reward"][player_id], weight
+        else:
+            return self.evaluate_state(state_info)[player_id], weight
 
     def _visit(self, move_index, player_id):
         """Update the visit and score arrays for a given move index"""
-        state = self.states[move_index].deepcopy()       # without deepcopy, this doesn't work
-        value = self._rollout(state, player_id)
-        self.visits[move_index] += 1
-        self.scores[move_index] += value
+        state = self.states[move_index].deepcopy()  # without deepcopy, this doesn't work
+        value, weight = self._rollout(state, player_id)
+        self.visits[move_index] += weight
+        self.scores[move_index] += value * weight
 
     def _get_output(self, state_info: dict):
         """After all the process to get the action and state evaluation
@@ -198,54 +296,71 @@ class NNAgent(Agent):
         action = self.legal_indices[best_index]
         return {"action": action, "eval": evaluation}
 
-    def get_action(self, state_info: dict, verbose=False, bar_length=30) -> dict:
+    def _print_search_results(self, state_info, ev, t, bar_length):
+        policy = self.call_policy(state_info)
+        value = self.evaluate_state(state_info)
+        print(f'\n>>> {self.n_rollouts} rollouts, depth {self.rollout_depth}')
+        print(f'\nvalue: {value[state_info["current_player"]]:.3f}')
+
+        color = 91 if state_info["current_player"] == 1 else 94
+        best_policy_index = int(np.argmax(policy[state_info["legal_moves"] > 0]))
+        best_value_index = int(np.argmax(ev))
+
+        print('\nPolicy:')
+        for i in range(self.n_moves):
+            p = policy[self.legal_indices[i]]
+            s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
+
+            s += bar(p, color, length=bar_length)
+            # s += f'[\033[{color}m' + '.' * int(p * bar_length) + '\033[0m]'
+            if i == best_policy_index:
+                s += ' <<'
+            print(s)
+
+        print('\nSearch EV:')
+        for i in range(self.n_moves):
+            p = ev[i]
+            s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
+
+            s += bar(p, color, length=bar_length)
+            # s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
+            if i == best_value_index:
+                s += ' <<'
+            print(s)
+
+        print(f"\nTime: {t:.2f} s\n")
+
+    def get_action(self, state_info: dict, verbose=False, bar_length=30, half_life=10) -> dict:
         """
         For every possible move, the agent makes n_rollouts rollouts
         and evaluates the position after rollout_depth moves using
-        the value function. The move with the highest expected value
-        is chosen.
+        the value function. Return the move with the highest expected value.
+        :param state_info:
+        :param verbose:
+        :param bar_length: when printing output
+        :param half_life: reward half-life
         """
         t = time()
         self._reset_search(state_info)
 
         # only legal move
         if self.n_moves == 1:
-            return {"action": self.legal_indices[0]}
+            action = self.legal_indices[0]
+            value = self.evaluate_state(state_info)
+            return {"action": action, "eval": value}
 
         # rollouts
         for i in range(self.n_moves):
-
-            # print(f'\n Move {self.legal_indices[i]}')
-
             for _ in range(self.n_rollouts):
                 self._visit(i, player_id=state_info["current_player"])
 
         # get index of best move
         ev = self.scores / self.visits
-        best_index = int(np.argmax(self.scores / self.visits))
 
         # print
         if verbose:
-            policy = self.call_policy(state_info)
-            for i in range(self.n_moves):
-                color = 91 if state_info["current_player"] == 1 else 94
-
-                p_2 = policy[self.legal_indices[i]]
-                s_2 = f'{self.legal_indices[i]:3}: {p_2:6.1%}  |'
-                s_2 += f'\033[{color}m' + '.' * int(p_2 * bar_length) + '\033[0m'
-                print(s_2)
-
-                p = ev[i]
-                s = ' ' * 7 + f'{p:.3f} '
-                s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
-                if i == best_index:
-                    s += ' <<'
-                print(s)
-
-            # print(f'Best move: {self.legal_indices[best_index]}')
-            print()
             t = time() - t
-            print(f"Time: {t:.2f}s")
+            self._print_search_results(state_info, ev, t, bar_length)
 
         return self._get_output(state_info)
 
@@ -255,31 +370,70 @@ class NNAgent(Agent):
     def get_value_function(self):
         return self.value_function
 
-    def _train_policy(self, x, y,
-                      n_epochs=1000, lr=0.1,
-                      momentum=0.9, verbose=True):
+    def _get_policy_accuracy(self, x, y_true):
+        """ example tensors -> acc"""
+        y = y_true.detach().numpy()
+        y_true_values = np.argmax(y, axis=1)
+        y_pred = self.policy(x)
+        y_pred_values = np.argmax(y_pred.detach().numpy(), axis=1)
+        accuracy = np.mean(y_pred_values == y_true_values)
+        return accuracy
+
+    def _get_value_function_rmse(self, x, y_true):
+        """ example tensors -> rmse"""
+        y = y_true.detach().numpy()
+        y_pred = self.value_function(x)
+        rmse = np.sqrt(np.mean((y_pred.detach().numpy() - y) ** 2))
+        return rmse
+
+    def train_policy(self, x, y,
+                     n_epochs=500, lr=0.1,
+                     momentum=0.9, batch_size=100,
+                     print_period=50, verbose=True):
         """Train the policy using the training data"""
         if self.policy is None:
             raise ValueError("Policy is not set")
         if verbose:
             print("\n>>> Training policy")
 
-        criterion = nn.CrossEntropyLoss()
-        optimizer = optim.SGD(self.policy.parameters(),
-                              lr=lr, momentum=momentum)
+        # stochastic gradient descent with momentum and fixed batch size
+        criterion = nn.BCELoss()
+        optimizer = optim.SGD(self.policy.parameters(), lr=lr, momentum=momentum)
+        dataset = TensorDataset(x, y)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        losses = []
+
+        # accuracy
+        if verbose:
+            acc = self._get_policy_accuracy(x, y)
+            print(f' accuracy: {acc:.2%}')
 
         for epoch in range(n_epochs):
-            optimizer.zero_grad()
-            output = self.policy(x.float())
-            loss = criterion(output, y)
-            loss.backward()
-            optimizer.step()
+            if verbose and (epoch + 1) % print_period == 0:
+                losses = []
+
+            for x_batch, y_batch in data_loader:
+                optimizer.zero_grad()
+                output = self.policy(x_batch.float())
+                loss = criterion(output, y_batch)
+                loss.backward()
+                optimizer.step()
+                if verbose and (epoch + 1) % print_period == 0:
+                    losses.append(loss.item())
 
             # performance
-            if verbose and (epoch+1) % 100 == 0:
-                print(f'Epoch {epoch+1:5}, Loss: {loss.item():.5f}')
+            if verbose and (epoch + 1) % print_period == 0:
+                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.6f}')
 
-    def _train_value_function(self, x, y, n_epochs=1000, lr=0.1, momentum=0.9, verbose=True):
+        # accuracy
+        if verbose:
+            acc = self._get_policy_accuracy(x, y)
+            print(f' accuracy: {acc:.2%}')
+
+    def train_value_function(self, x, y,
+                             n_epochs=1000, lr=0.1,
+                             momentum=0.9, batch_size=100,
+                             print_period=50, verbose=True):
         """Train the value function using the training data"""
         if self.value_function is None:
             raise ValueError("Value function is not set")
@@ -288,26 +442,67 @@ class NNAgent(Agent):
 
         criterion = nn.MSELoss()
         optimizer = optim.SGD(self.value_function.parameters(), lr=lr, momentum=momentum)
+        dataset = TensorDataset(x, y)
+        data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+        losses = []
+
+        # rmse
+        if verbose:
+            rmse = self._get_value_function_rmse(x, y)
+            print(f'     rmse: {rmse:.5f}')
 
         for epoch in range(n_epochs):
-            optimizer.zero_grad()
-            output = self.value_function(x.float())
-            loss = criterion(output, y)
-            loss.backward()
-            optimizer.step()
+            if verbose and (epoch + 1) % print_period == 0:
+                losses = []
+
+            for x_batch, y_batch in data_loader:
+                optimizer.zero_grad()
+                output = self.value_function(x_batch.float())
+                loss = criterion(output, y_batch)
+                loss.backward()
+                optimizer.step()
+                if verbose and (epoch + 1) % print_period == 0:
+                    losses.append(loss.item())
 
             # performance
-            if verbose and (epoch+1) % 100 == 0:
-                print(f'Epoch {epoch+1:5}, Loss: {loss.item():.5f}')
+            if verbose and (epoch + 1) % print_period == 0:
+                print(f'Epoch {epoch + 1:5}, Loss: {np.average(losses):.6f}')
 
-    def train_agent(self, x, y_policy, y_value, n_epochs=4000, lr=0.1, momentum=0.9, verbose=True):
+        # rmse
+        if verbose:
+            rmse = self._get_value_function_rmse(x, y)
+            print(f'     rmse: {rmse:.5f}')
+
+    def train_agent(self, x, y_policy, y_value,
+                    n_epochs_policy=500, n_epochs_value=500,
+                    lr=0.1, momentum=0.9, verbose=True):
         """Train the policy and value function using the training data"""
-        self._train_policy(x, y_policy, n_epochs=n_epochs, lr=lr, momentum=momentum, verbose=verbose)
-        self._train_value_function(x, y_value, n_epochs=n_epochs, lr=lr, momentum=momentum, verbose=verbose)
+        self.train_policy(x, y_policy, n_epochs=n_epochs_policy, lr=lr, momentum=momentum, verbose=verbose)
+        self.train_value_function(x, y_value, n_epochs=n_epochs_value, lr=lr, momentum=momentum, verbose=verbose)
 
     def save_models(self, verbose=True):
         """Save the policy and value function to dir_path"""
         if verbose:
             print(f"\n>>> Saving models in {self.dir_path}")
-        torch.save(self.policy, f"{self.dir_path}\\policy.pkl")
-        torch.save(self.value_function, f"{self.dir_path}\\value_function.pkl")
+        torch.save(self.policy, self.get_policy_path())
+        torch.save(self.value_function, self.get_value_function_path())
+
+    def evaluate(self, n_games=500, show_game=False):
+        """ Evaluate the components of the agent (policy and value function) """
+        print(f'\nEvaluating agent on {n_games} games...')
+
+        # agents
+        random_agent = Agent()
+        opponents = list()
+        opponents.append(PolicyAgent(policy_path=self.get_policy_path(), greedy=True))
+        opponents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=self.get_value_function_path()))
+
+        for opponent in opponents:
+            for order in range(2):
+                agents = [opponent, random_agent]
+                if order == 1:
+                    agents = list(reversed(agents))
+                print(f'\nAgent 1: {agents[0]}\nAgent 2: {agents[1]}\n')
+
+                # evaluation match
+                evaluation_match(*agents, n_games=n_games, show_game=show_game, player=order)

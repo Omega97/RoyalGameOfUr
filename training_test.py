@@ -3,9 +3,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-import torch
 import torch.nn as nn
-import torch.optim as optim
 
 from training import Training
 from nn_agent import NNAgent
@@ -39,7 +37,7 @@ def show_self_play_data(path='database'):
 def test_training_loop(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
     """Train the agent"""
     agent = NNAgent(game_instance=RoyalGameOfUr(),
-                    models_dir=os.path.join(root_dir, 'models'),
+                    dir_path=os.path.join(root_dir, 'models'),
                     n_rollouts=100,
                     rollout_depth=10)
 
@@ -56,7 +54,7 @@ def test_training_loop(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinfor
     # training._play_self_play_games(n_games=1, verbose=True)
 
     # convert games to training data
-    training.convert_games_to_training_data()
+    training._convert_games_to_training_data()
 
     # train policy and value function
     training._train_agent(n_epochs_policy=500,
@@ -67,7 +65,7 @@ def test_training_loop(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinfor
 def test_evaluation(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
     """Evaluate the agent"""
     agent = NNAgent(game_instance=RoyalGameOfUr(),
-                    models_dir=os.path.join(root_dir, 'ur_models'),
+                    dir_path=os.path.join(root_dir, 'ur_models'),
                     n_rollouts=100,
                     rollout_depth=None)
     training = Training(agent_instance=agent,
@@ -75,7 +73,7 @@ def test_evaluation(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinforcem
                         games_dir=os.path.join(root_dir, 'ur_games'))
 
     training._load_agents()
-    training.convert_games_to_training_data()
+    training._convert_games_to_training_data()
 
     game_dir = root_dir + 'ur_games'
     files = os.listdir(game_dir)
@@ -96,7 +94,7 @@ def test_evaluation(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinforcem
 def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
     """Train the policy network"""
     agent = NNAgent(game_instance=RoyalGameOfUr(),
-                    models_dir=os.path.join(root_dir, 'ur_models'))
+                    dir_path=os.path.join(root_dir, 'ur_models'))
 
     training = Training(agent_instance=agent,
                         game_instance=RoyalGameOfUr(),
@@ -114,7 +112,7 @@ def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinf
             nn.Softmax(dim=1)
         ))
 
-    training.convert_games_to_training_data()
+    training._convert_games_to_training_data()
 
     print(training.X.shape)
     print(training.y_policy.shape)
@@ -153,12 +151,12 @@ def test_policy_training(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\Reinf
 
 def test_policy(root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
     agent = NNAgent(game_instance=RoyalGameOfUr(),
-                    models_dir=os.path.join(root_dir, 'ur_models'))
+                    dir_path=os.path.join(root_dir, 'ur_models'))
     training = Training(agent_instance=agent,
                         game_instance=RoyalGameOfUr(),
                         games_dir=os.path.join(root_dir, 'ur_games'))
 
-    training.convert_games_to_training_data()
+    training._convert_games_to_training_data()
     y_pred = agent.policy(training.X).detach().numpy()
     y_pred_max = np.max(y_pred, axis=1)
 

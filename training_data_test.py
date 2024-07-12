@@ -19,13 +19,12 @@ def test_backpropagation(n=100):
     plt.show()
 
 
-def test_create_dataset(games_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning\\ur_games',
-                        halflife=5):
+def test_create_dataset(games_dir=os.path.join(os.getcwd(), 'ur_games'), halflife=5):
     """Backpropagation plot"""
     file_list = os.listdir(games_dir)
     file_list = [os.path.join(games_dir, name) for name in file_list if name.endswith('.pkl')]
 
-    file_list = [file_list[-8]]
+    file_list = [file_list[-1]]
 
     print(f'Games found: {len(file_list)}')
 

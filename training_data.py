@@ -4,6 +4,7 @@ import torch
 
 
 def one_hot_encode(n, size):
+    """ One hot encoding of n in a vector of size """
     v = [0] * size
     v[n] = 1
     return v
@@ -11,8 +12,8 @@ def one_hot_encode(n, size):
 
 def state_to_features(state_info, default_n_dice=4, default_n_pieces=7):
     """
-    convert state info to array (abstract board representation)
-    # ['current_player', 'n_steps', 'round', 'board', 'board_size', 'n_dice']
+    Convert state info to array (abstract board representation)
+    # ['current_player', 'n_steps', 'board', 'board_size', 'legal_moves']
     """
     v = []
     n_dice = state_info.get("n_dice", default_n_dice)
@@ -70,7 +71,7 @@ def backpropagation(v, halflife=20):
     """
     v = np.array(v)
     if halflife > 0:
-        k = np.exp(-np.log(2) / halflife)
+        k = np.exp(-np.log(2) / halflife)  # 2^(-1/x)
     else:
         k = 0.
     out = np.zeros_like(v)
@@ -84,7 +85,6 @@ def create_dataset_from_game_files(game_files, halflife=10):
     """
     Build the dataset, then return X, y_policy, and y_value as numpy arrays
     """
-
     X = []
     y_policy = []
     y_value = []

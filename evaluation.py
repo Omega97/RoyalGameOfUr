@@ -1,8 +1,12 @@
 import numpy as np
+from time import time
 from royal_game_of_ur import RoyalGameOfUr
-from agent import Agent
-from nn_agent import NNAgent
-import os
+
+
+def elo(winrate, k=400):
+    """Calculate the Elo rating from a winrate"""
+    return k * np.log10(winrate / (1 - winrate))
+
 
 def play_game(agent_1, agent_2, verbose):
     game = RoyalGameOfUr()
@@ -11,28 +15,26 @@ def play_game(agent_1, agent_2, verbose):
     return result["reward"]
 
 
-def evaluation_match(agent_1, agent_2, n_games, show_game=False, verbose=True):
-    out = 0
+def evaluation_match(agent_1, agent_2, n_games,
+                     show_game=False, prior=0.5,
+                     player=0, verbose=True):
+    out = np.zeros(2, dtype=float)
+    score = None
+    times = [time()]
     for i in range(n_games):
         out += play_game(agent_1, agent_2, verbose=show_game)
+        score = (out + prior) / (i + 1 + 2 * prior)
+        times.append(time())
         if verbose:
-            print(f'game: {i+1:3} / {n_games:3}   score: {np.round(out / n_games, 3)}')
-    return out / n_games
-
-
-def main(n_games=10, show_game=False, root_dir='C:\\Users\\monfalcone\\PycharmProjects\\ReinforcementLearning'):
-    agent_1 = NNAgent(game_instance=RoyalGameOfUr(),
-                      models_dir=os.path.join(root_dir, 'ur_models'),
-                      n_rollouts=50,
-                      rollout_depth=2)
-    agent_2 = Agent()
-    evaluation_match(agent_1, agent_2, n_games=n_games, show_game=show_game)
+            e = elo(score)
+            j_start = (len(times) - 1) // 2
+            j_stop = len(times) - 1
+            n_left = n_games - j_stop
+            speed = (j_stop - j_start) / (times[j_stop] - times[j_start])
+            eta = n_left / speed
+            print(f'\rgame: {i + 1:3} / {n_games:3}   '
+                  f'score: {score[player]:.3f}   '
+                  f'elo: {e[player]:.0f}   '
+                  f'eta: {eta // 60:.0f} min {eta % 60:.0f} s', end='  ')
     print()
-
-    # swap colors
-    agent_1, agent_2 = agent_2, agent_1
-    evaluation_match(agent_1, agent_2, n_games=n_games, show_game=show_game)
-
-
-if __name__ == '__main__':
-    main()
+    return score

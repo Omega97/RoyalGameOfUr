@@ -75,7 +75,7 @@ class RoyalGameOfUr(Game):
         self.board = None
         self.current_player = None
         self.round = None
-        self.n_steps = None
+        self.n_steps = None  # by how many steps does the piece move
 
         self.game_record = None
         self.rolls_record = None
@@ -202,14 +202,17 @@ class RoyalGameOfUr(Game):
                 return True
         return False
 
-    def get_reward(self):
-        """get the reward for the current player (None if the game is not over)"""
+    def get_reward(self) -> np.array:
+        """get the reward for the current player (zeros if the game is not over)"""
         if self.get_board()[0, self.score_square] == self.n_pieces:
+            # first player won
             return np.array([1., 0.])
         elif self.get_board()[1, self.score_square] == self.n_pieces:
+            # second player won
             return np.array([0., 1.])
         else:
-            return None
+            # game not over yet
+            return np.array([0., 0.])
 
     def __repr__(self):
 
@@ -261,20 +264,17 @@ class RoyalGameOfUr(Game):
         if verbose:
             print(self)
 
-        state_info = self.get_state_info()
-
         # get action from agent
+        state_info = self.get_state_info()
         agent_output = agent(state_info, verbose=verbose)
 
         assert type(agent_output) is dict, f'{agent} returned {agent_output}, should return a dict instead'
         assert "action" in agent_output
+        assert "eval" in agent_output
         action = agent_output["action"]
 
-        if "eval" in agent_output:
-            player_eval = agent_output["eval"]
-            assert len(player_eval) == 2, f"please evaluate position for all players; {agent}(state)={player_eval}"
-        else:
-            player_eval = [None, None]
+        player_eval = agent_output["eval"]
+        assert len(player_eval) == 2, f"please evaluate position for all players; {agent}(state)={player_eval}"
 
         if type(action) not in (int, np.int32):
             raise ValueError(f'type(action) = {type(action)}, should be int instead')
@@ -297,20 +297,22 @@ class RoyalGameOfUr(Game):
         self.evaluations.append(player_eval)
 
     def _get_game_recap(self) -> dict:
-        """get the game recap as a dictionary"""
+        """Returns the game recap as a dictionary
+        """
         return {"players": (str(self.agents[0]), str(self.agents[1])),
                 "reward": self.get_reward(),
                 "game_record": self.game_record,
+                "player_on_duty": tuple([s["current_player"] for s in self.game_record]),  # todo check
                 "rolls": self.rolls_record,
                 "player_moves": self.player_moves,
                 "player_eval": self.evaluations,
+                "is_game_over": self.is_game_over()
                 }
 
-    def _close_game(self, verbose):
-        """close the game and print the final state"""
+    def _close_game(self, verbose=False):
+        """close the game by adding final reward, then print the final state"""
         final_reward = self.get_reward()
         self.evaluations.append(final_reward)
-
         if verbose:
             print(self)
             winner = int(np.argmax(final_reward))
@@ -329,6 +331,8 @@ class RoyalGameOfUr(Game):
 
         # reset game state
         self.agents = agents
+        for agents in self.agents:
+            agents.reset()
         if do_reset:
             self.reset()
 

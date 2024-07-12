@@ -1,8 +1,16 @@
 import os
 from copy import deepcopy
-
 from royal_game_of_ur import RoyalGameOfUr
 from training_data import create_dataset_from_game_files
+
+
+def special_func(x, x0, p):
+    """ Special function to determine the number of games to use
+    * lim(x-f(x), x->inf) = inf  (every data point eventually fades out of the dataset)
+    * lim(f(x), x->inf) = inf    (the dataset size tends to grow to infinity)
+    * lim(f(x) / x, x->inf) = 0  (the size of the dataset grows slower than x)
+    """
+    return (x + x0 ** (1 / p)) ** p
 
 
 class Training:
@@ -45,6 +53,9 @@ class Training:
         self.game = game_instance
         self.games_dir = games_dir
 
+        if not os.path.exists(games_dir):
+            os.mkdir(games_dir)
+
         # data
         self.X = None
         self.y_policy = None
@@ -52,14 +63,12 @@ class Training:
 
         self.agents = None
 
-    def _load_agents(self):
-        """
-        Create and set agents
-        """
+    def _load_agents(self, verbose=False):
+        """ Create and set agents """
         self.agents = (deepcopy(self.agent_instance),
                        deepcopy(self.agent_instance))
         for agent in self.agents:
-            agent.reset()
+            agent.reset(verbose=verbose)
 
     def play_game(self, verbose=False):
         """
@@ -73,49 +82,64 @@ class Training:
         game_copy.save(path=f"{self.games_dir}\\game_{n}.pkl", verbose=verbose)
 
     def _play_self_play_games(self, n_games, verbose=False):
-        """
-        Play self-play games and save them to the database
-        """
+        """ Play self-play games and save them to the database """
         for i in range(n_games):
-            print(f'\nPlaying game {i+1}/{n_games}')
+            print(f'Playing game {i+1}/{n_games}')
             self.play_game(verbose=verbose)
 
-    def _get_game_files(self, n_min=25, game_ratio=0.5):
+    def _get_game_files(self, min_n_games, p=0.8):
         """ Return a list of game files """
         game_files = [f"{self.games_dir}\\{f}" for f in os.listdir(self.games_dir)]
-        n_games = int(len(game_files) * game_ratio)
-        n_games = max(n_min, n_games)
+        n_games = int(special_func(len(game_files), x0=min_n_games, p=p))
         return game_files[-n_games:]
 
-    def _convert_games_to_training_data(self, halflife=10):
+    def _convert_games_to_training_data(self, min_n_games=30, halflife=1):
         """
         Convert the games played by the agent to training data
         and store them in the instance variables X, y_policy, y_value
         """
 
         # choose files
-        game_files = self._get_game_files()
+        game_files = self._get_game_files(min_n_games)
         print(f'\nConverting {len(game_files)} games to training data...')
 
         # create dataset
         self.X, self.y_policy, self.y_value = create_dataset_from_game_files(game_files=game_files,
                                                                              halflife=halflife)
 
-    def _train_agent(self, n_epochs, lr=0.1):
+    def _train_agent(self, n_epochs_policy, n_epochs_value, lr=0.1):
         """
         Train the policy and value function using
         the training data, then save the trained models.
         """
-        self.agent_instance.train_agent(x=self.X, y_policy=self.y_policy,
-                                        y_value=self.y_value, n_epochs=n_epochs, lr=lr)
+        self.agent_instance.train_agent(x=self.X,
+                                        y_policy=self.y_policy,
+                                        y_value=self.y_value,
+                                        n_epochs_value=n_epochs_value,
+                                        n_epochs_policy=n_epochs_policy,
+                                        lr=lr)
         self.agent_instance.save_models()
 
+    def _evaluate_agent(self):
+        """Call the evaluate method of the agent if it exists"""
+        if hasattr(self.agent_instance, 'evaluate'):
+            print('\nEvaluating agent...')
+            self.agent_instance.reset()
+            self.agent_instance.evaluate()
+
     def run(self, n_cycles, n_games_per_cycle, halflife=20,
-            n_epochs=5000, lr=0.1, verbose=True):
-        """ Run the training process """
+            n_epochs_policy=500, n_epochs_value=500, lr=0.1,
+            min_n_games=20, verbose=True):
+        """ Run the training loop
+        - load two copies of the agent
+        - play self-play games
+        - convert the games to training data, save it to a directory
+        - train the agent, save the new model in the same directory
+        """
         for i in range(n_cycles):
-            print(f'\n\nTraining cycle {i+1}/{n_cycles}')
-            self._load_agents()
+            print(f'\n\nTraining cycle {i+1}/{n_cycles}\n')
+            self._load_agents(verbose=verbose)
             self._play_self_play_games(n_games_per_cycle, verbose=verbose)
-            self._convert_games_to_training_data(halflife=halflife)
-            self._train_agent(n_epochs=n_epochs, lr=lr)
+            self._convert_games_to_training_data(min_n_games, halflife=halflife)
+            self._train_agent(n_epochs_policy, n_epochs_value, lr=lr)
+            self._evaluate_agent()
