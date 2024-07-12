@@ -1,7 +1,7 @@
 import os
-from training import Training
-from nn_agent import NNAgent
-from royal_game_of_ur import RoyalGameOfUr
+from game.training import Training
+from agents.nn_agent import NNAgent
+from game.royal_game_of_ur import RoyalGameOfUr
 # todo save player on duty
 # todo save state to record when setting state
 # todo rollouts in parallel
