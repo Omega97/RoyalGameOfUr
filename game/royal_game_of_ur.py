@@ -10,7 +10,10 @@ import numpy as np
 import pickle
 from copy import deepcopy
 import os
-from game.game import Game
+from game import Game
+
+
+INT_LIKE_TYPES = (int, np.int32, np.int64)
 
 
 def roll(n_dices):
@@ -162,7 +165,7 @@ class RoyalGameOfUr(Game):
 
     def move(self, position: int):
         """move a piece from a square to another square"""
-        assert type(position) in (int, np.int32)
+        assert type(position) in INT_LIKE_TYPES
         self._do_update_player = True
 
         # move and capture
@@ -276,7 +279,7 @@ class RoyalGameOfUr(Game):
         player_eval = agent_output["eval"]
         assert len(player_eval) == 2, f"please evaluate position for all players; {agent}(state)={player_eval}"
 
-        if type(action) not in (int, np.int32):
+        if type(action) not in INT_LIKE_TYPES:
             raise ValueError(f'type(action) = {type(action)}, should be int instead')
 
         return action, player_eval
