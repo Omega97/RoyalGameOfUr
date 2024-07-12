@@ -10,7 +10,11 @@ import numpy as np
 import pickle
 from copy import deepcopy
 import os
-from game import Game
+
+try:
+    from game import Game
+except ImportError:
+    from game.game import Game
 
 
 INT_LIKE_TYPES = (int, np.int32, np.int64)
@@ -58,6 +62,9 @@ def board_to_screen(board, board_size, n_dice):
 
 
 class RoyalGameOfUr(Game):
+
+    INPUT_SIZE = 82
+    OUTPUT_SIZE = 16
 
     def __init__(self, board_size=8, n_dice=4, n_pieces=7):
         super().__init__()
