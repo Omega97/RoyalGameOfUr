@@ -3,14 +3,12 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
-import torch
 import torch.nn as nn
-import torch.optim as optim
 
-from game.training import Training
+from agents.training import Training
 from agents.nn_agent import NNAgent
 from game.royal_game_of_ur import RoyalGameOfUr
-from game.training_data import create_dataset_from_game_files
+from agents.training_data import create_dataset_from_game_files
 
 
 def show_self_play_data(path='database'):

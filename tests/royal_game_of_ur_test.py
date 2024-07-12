@@ -34,5 +34,5 @@ def test_legal_moves():
 
 
 if __name__ == '__main__':
-    # test_game()
-    test_legal_moves()
+    test_game()
+    # test_legal_moves()
