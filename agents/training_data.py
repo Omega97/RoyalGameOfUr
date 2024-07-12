@@ -85,7 +85,7 @@ def create_dataset_from_game_files(game_files, halflife=10):
     """
     Build the dataset, then return X, y_policy, and y_value as numpy arrays
     """
-    X = []
+    x = []
     y_policy = []
     y_value = []
 
@@ -98,7 +98,7 @@ def create_dataset_from_game_files(game_files, halflife=10):
             state = dct['game_record'][i]
 
             # input features
-            X.append(state_to_features(state))
+            x.append(state_to_features(state))
 
             # move
             y_policy.append(one_hot_encode(dct['player_moves'][i], len(state['legal_moves'])))
@@ -113,12 +113,12 @@ def create_dataset_from_game_files(game_files, halflife=10):
 
         y_value.extend(y_value_new)
 
-    X = np.array(X)
+    x = np.array(x)
     y_policy = np.array(y_policy)
     y_value = np.array(y_value)
 
-    X = torch.tensor(X, dtype=torch.float)
+    x = torch.tensor(x, dtype=torch.float)
     y_policy = torch.tensor(y_policy, dtype=torch.float)
     y_value = torch.tensor(y_value, dtype=torch.float)
 
-    return X, y_policy, y_value
+    return x, y_policy, y_value
