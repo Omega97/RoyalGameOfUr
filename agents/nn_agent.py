@@ -9,7 +9,9 @@ from game.royal_game_of_ur import RoyalGameOfUr
 from game.agent import Agent
 from game.evaluation import evaluation_match
 from agents.training_data import state_to_features
-from src.utils import bar
+from agents.policy_agent import PolicyAgent
+from agents.value_agent import ValueAgent
+from src.utils import bar, bcolors
 
 
 def initialize_weights(model, weight_range=0.1):
@@ -21,124 +23,13 @@ def initialize_weights(model, weight_range=0.1):
             torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
 
 
-class PolicyAgent(Agent):
-    """This bot uses the policy to make decisions"""
-
-    def __init__(self, policy=None, greedy=False, policy_path=None):
-        self.policy = policy
-        self.greedy = greedy
-        self.policy_path = policy_path
-
-        # set policy
-        if self.policy is None:
-            self.reset()
-
-    def __repr__(self):
-        return f"PolicyAgent(greedy={self.greedy})"
-
-    def reset(self):
-        self._load_from_path()
-
-    def _load_from_path(self):
-        """Load policy from path"""
-        if self.policy_path is not None:
-            assert os.path.exists(self.policy_path), 'File not found'
-            self.policy = torch.load(self.policy_path)
-            assert self.policy is not None, 'Failed to load policy'
-
-    def get_action(self, state_info: dict, verbose=False) -> dict:
-        """Sample a random action according to the
-        probability distribution of the policy"""
-        assert self.policy is not None
-        features = state_to_features(state_info)
-        x = np.array([features])
-        x = torch.tensor(x, dtype=torch.float)
-        y = self.policy(x).detach().numpy()
-        y *= state_info["legal_moves"]
-        assert np.sum(y) > 0, "No legal moves"
-
-        if self.greedy:
-            action = int(np.argmax(y[0]))
-        else:
-            action = np.random.choice(len(y[0]), p=y[0] / np.sum(y[0]))  # todo normalization?
-
-        return {"action": action, "eval": np.ones(2) * 0.5}
-
-
-class ValueAgent(Agent):
-    """This bot uses the value function to make decisions"""
-
-    def __init__(self, game_instance, value_function=None, value_path=None, verbose=False):
-        self.game_instance = game_instance
-        self.value_function = value_function
-        self.value_path = value_path
-        self.verbose = verbose
-
-        # set value function
-        if self.value_function is None:
-            self.reset()
-
-    def __repr__(self):
-        return f"ValueAgent()"
-
-    def reset(self):
-        if self.verbose:
-            print('Loading value function')
-        self._load_from_path()
-
-    def _load_from_path(self):
-        """Load value function from path"""
-        if self.value_path is not None:
-            assert os.path.exists(self.value_path), 'File not found'
-            self.value_function = torch.load(self.value_path)
-            assert self.value_function is not None, 'Failed to load value function'
-            if self.verbose:
-                print('Value function loaded')
-
-    def get_action(self, state_info: dict, verbose=False) -> dict:
-        """
-        Evaluate all the possible moves and return the one
-        with the highest expected value.
-        """
-        assert self.value_function is not None
-        player_id = state_info["current_player"]
-        legal_moves = state_info["legal_moves"]
-        legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
-        values = np.zeros(len(legal_moves))
-
-        for i in range(len(legal_move_indices)):
-            state = self.game_instance.deepcopy()
-            state = state.set_state(state_info)
-            state.move(legal_move_indices[i])
-            features = state_to_features(state.get_state_info())
-            x = np.array([features])
-            x = torch.tensor(x, dtype=torch.float)
-            y = self.value_function(x).detach().numpy()
-            y = y[0]
-            values[i] = y[player_id]
-
-        # get best move
-        best_move = legal_move_indices[np.argmax(values)]
-        best_eval = max(values)
-        eval_ = [best_eval, 1-best_eval]
-        if player_id == 1:
-            eval_ = list(reversed(eval_))
-        eval_ = np.array(eval_)
-
-        if self.verbose:
-            print(f'action {best_move}')
-            print(f'  eval {best_eval:.3f}')
-
-        return {"action": best_move, "eval": eval_}
-
-
 class NNAgent(Agent):
 
     def __init__(self,
                  game_instance,
                  dir_path,
                  n_rollouts=100,
-                 rollout_depth=3,
+                 rollout_depth=2,
                  hidden_units=100,
                  reward_half_life=20,
                  greedy=False,
@@ -300,7 +191,7 @@ class NNAgent(Agent):
         print(f'\n>>> {self.n_rollouts} rollouts, depth {self.rollout_depth}')
         print(f'\nvalue: {value[state_info["current_player"]]:.3f}')
 
-        color = 91 if state_info["current_player"] == 1 else 94
+        color = bcolors.RED if state_info["current_player"] == 1 else bcolors.BLUE
         best_policy_index = int(np.argmax(policy[state_info["legal_moves"] > 0]))
         best_value_index = int(np.argmax(ev))
 
@@ -308,7 +199,6 @@ class NNAgent(Agent):
         for i in range(self.n_moves):
             p = policy[self.legal_indices[i]]
             s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
-
             s += bar(p, color, length=bar_length)
             # s += f'[\033[{color}m' + '.' * int(p * bar_length) + '\033[0m]'
             if i == best_policy_index:
@@ -319,7 +209,6 @@ class NNAgent(Agent):
         for i in range(self.n_moves):
             p = ev[i]
             s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
-
             s += bar(p, color, length=bar_length)
             # s += f'[\033[{color}m' + '=' * int(p * bar_length) + '\033[0m]'
             if i == best_value_index:
