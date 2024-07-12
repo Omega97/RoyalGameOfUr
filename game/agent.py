@@ -51,4 +51,4 @@ class Agent:
         return out
 
     def __repr__(self):
-        return f"Agent()"
+        return f"{type(self).__name__}()"
