@@ -21,6 +21,9 @@ def evaluation_match(agent_1, agent_2, n_games,
     out = np.zeros(2, dtype=float)
     score = None
     times = [time()]
+    if verbose:
+        print()
+
     for i in range(n_games):
         out += play_game(agent_1, agent_2, verbose=show_game)
         score = (out + prior) / (i + 1 + 2 * prior)
@@ -36,5 +39,7 @@ def evaluation_match(agent_1, agent_2, n_games,
                   f'score: {score[player]:.3f}   '
                   f'elo: {e[player]:.0f}   '
                   f'eta: {eta // 60:.0f} min {eta % 60:.0f} s', end='  ')
-    print()
+
+    if verbose:
+        print()
     return score

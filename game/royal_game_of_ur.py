@@ -10,11 +10,7 @@ import numpy as np
 import pickle
 from copy import deepcopy
 import os
-
-try:
-    from game import Game
-except ImportError:
-    from game.game import Game
+from game.game import Game
 
 
 INT_LIKE_TYPES = (int, np.int32, np.int64)
