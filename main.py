@@ -1,25 +1,17 @@
 import os
-from agents.training import Training
-from agents.nn_agent import NNAgent
+from game.training import Training
+from agents.nn_value_agent import NNValueAgent
 from game.royal_game_of_ur import RoyalGameOfUr
-# todo save player on duty
-# todo save state to record when setting state
-# todo rollouts in parallel
-# todo if there is data, start with training
-# todo group the generated games and models by iteration
-# todo run torch on GPU
-# todo merge policy with value function
-# todo rollouts return weighted average of each state of the trajectory
+
 
 
 def main():
     root_dir = os.getcwd()
 
-    agent = NNAgent(game_instance=RoyalGameOfUr(),
-                    dir_path=os.path.join(root_dir, 'ur_models'),
-                    n_rollouts=100,
-                    rollout_depth=5,
-                    )
+    agent = NNValueAgent(game_instance=RoyalGameOfUr(),
+                         models_dir_path=os.path.join(root_dir, 'ur_models'),
+                         depth=2,
+                         )
 
     training = Training(agent_instance=agent,
                         game_instance=RoyalGameOfUr(),
