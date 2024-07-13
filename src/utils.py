@@ -9,14 +9,16 @@ class bcolors:
     UNDERLINE = '\033[4m'
     RED = '\033[91m'
     FAIL = '\033[91m'
+    OKGREEN = '\033[92m'
     GREEN = '\033[92m'
     WARNING = '\033[93m'
+    ORANGE = '\033[93m'
     BLUE = '\033[94m'
     HEADER = '\033[95m'
     CYAN = '\033[96m'
 
 
-def cprint(text, color=bcolors.RED, end='\n'):
+def cprint(text, color: str = "", end='\n'):
     """ Author: Omar
     Colorful print function. To see the colors, go to the class bcolors.
 
