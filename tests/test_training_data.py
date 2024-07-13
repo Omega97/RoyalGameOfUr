@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
-from agents.training_data import backpropagation, create_dataset_from_game_files
+from game.training_data import backpropagation, create_dataset_from_game_files
 
 
 def test_backpropagation(n=100):

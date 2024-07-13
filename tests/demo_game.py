@@ -68,8 +68,8 @@ def demo_game_nn_value_agent(dir_path='data/ur_models'):
     """Play a game between two NN-based agents and print the result"""
     agents = list()
 
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), dir_path=dir_path))
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), dir_path=dir_path))
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
+    agents.append(RandomAgent())
 
     assert len(agents) == 2
 
