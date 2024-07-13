@@ -103,6 +103,7 @@ class RoyalGameOfUr(Game):
         The roll is updated at the beginning of the game and after each move.
         """
         self.n_steps = roll(self.n_dice)
+        self.rolls_record.append(self.n_steps)
 
     def get_board(self):
         """get the board as a numpy array"""
@@ -302,7 +303,6 @@ class RoyalGameOfUr(Game):
 
         # save game info
         self.game_record.append(self.get_state_info())
-        self.rolls_record.append(self.n_steps)
         self.player_moves.append(action)
         self.evaluations.append(player_eval)
 
