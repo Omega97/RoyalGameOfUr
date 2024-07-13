@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 from game.agent import Agent
-from agents.training_data import state_to_features
+from game.training_data import state_to_features
 
 
 class ValueAgent(Agent):

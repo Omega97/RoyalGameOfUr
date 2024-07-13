@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from game.royal_game_of_ur import RoyalGameOfUr
 from game.agent import Agent
 from game.evaluation import evaluation_match
-from agents.training_data import state_to_features
+from game.training_data import state_to_features
 from agents.policy_agent import PolicyAgent
 from agents.value_agent import ValueAgent
 from src.utils import bar, bcolors
