@@ -107,9 +107,51 @@ def create_dataset_from_game_files(game_files, halflife=10):
     return x, y_policy, y_value
 
 
-def multiple_one_hot(x, n_values, dtype=np.float64):  # todo use in sate_to_features
+def multiple_one_hot(x: np.array, n_values: np.array, dtype=np.float64):  # todo use in sate_to_features
     """create the one-hot vector with multiple distributions"""
-    w = np.cumsum([0] + n_values[:-1])
+
+    print(x)
+    print(n_values)
+
+    assert len(x) == len(n_values)
+    w = np.cumsum(np.concatenate((np.zeros(1, dtype=np.int64), n_values[:-1])))
     v = np.zeros(sum(n_values), dtype)
-    v[w+x] += 1
+    v[w + x] += 1
+    return v
+
+
+def _state_to_features(state_info, default_n_dice=4, default_n_pieces=7, board_length=8):
+    """
+    Convert state info to array (abstract board representation)
+    # ['current_player', 'n_steps', 'board', 'board_size', 'legal_moves']
+    # todo fix pieces on the board
+    """
+    n_dice = state_info.get("n_dice", default_n_dice)
+    n_pieces = state_info.get("n_pieces", default_n_pieces)
+    n_squares = board_length * 2 - 1
+
+    x = (state_info["current_player"],  # player id
+         state_info["n_steps"],                        # roll
+         state_info["board"][0][0],     # pieces in the inventory
+         state_info["board"][1][0],
+         state_info["board"][0][1:-1],          # pieces on the board
+         state_info["board"][1][1:-1],
+         state_info["board"][0][-1],         # promoted pieces
+         state_info["board"][1][-1]
+         )
+
+    n_values = (2,                          # player id
+                n_dice + 1,                 # roll
+                n_pieces + 1,               # pieces in the inventory
+                n_pieces + 1,
+                n_squares,                  # pieces on the board
+                n_squares,
+                n_pieces + 1,               # promoted pieces
+                n_pieces + 1
+                )
+
+    v = multiple_one_hot(np.array(x), np.array(n_values))
+
+    v = np.concatenate(v, np.array(state_info["legal_moves"]))
+
     return v
