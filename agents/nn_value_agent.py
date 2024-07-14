@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from typing import List, Dict
 from game.evaluation import evaluation_match
 from game.agent import Agent
 from agents.random_agent import RandomAgent
@@ -39,7 +40,6 @@ class NNValueAgent(Agent):
 
         self.value_function = None
         self.legal_indices = None
-        self.visits = None
         self.scores = None
         self.states = None
 
@@ -47,6 +47,9 @@ class NNValueAgent(Agent):
 
     def __repr__(self):
         return f"NewNNValueAgent(depth={self.depth})"
+
+    def get_value_function(self):
+        return self.value_function
 
     def reset_value_function(self, input_size, hidden_units, output_size, weight_range=0.01):
         """ MLP value function """
@@ -60,40 +63,14 @@ class NNValueAgent(Agent):
             ))
         initialize_weights(self.value_function, weight_range)
 
-    def _get_move_values(self, legal_moves, legal_move_indices, state_info, player_id):
-        """Get the value of each move in legal_moves"""
-        values = np.zeros(len(legal_moves))
-
-        # iterate over all legal moves
-        for i in range(len(legal_move_indices)):
-            state = self.game.deepcopy()
-            state = state.set_state(state_info)
-            move = legal_move_indices[i]
-
-            # get new state after move
-            state.move(move)
-
-            # evaluate state
-            new_value = 0.
-
-            # iterate over all rolls
-            for j in range(len(NNValueAgent.PROBA)):
-                state_2 = state.deepcopy()
-                state_2.n_steps = j
-                state_2_info = state_2.get_state_info()
-                features = state_to_features(state_2_info)
-                x = np.array([features])
-                x = torch.tensor(x, dtype=torch.float)
-                if state_2.is_game_over():
-                    new_value += state_2.get_reward()[player_id] * NNValueAgent.PROBA[j]
-                else:
-                    y = self.value_function(x).detach().numpy()
-                    y = y[0]
-                    new_value += y[player_id] * NNValueAgent.PROBA[j]
-
-            values[i] = new_value
-
-        return values
+    def evaluate_states_after_roll(self, state_info_list: List[Dict]):
+        """
+        Evaluate multiple states using the value function
+        """
+        features = [state_to_features(state_info) for state_info in state_info_list]
+        x = np.array(features)
+        x = torch.tensor(x, dtype=torch.float)
+        return self.value_function(x).detach().numpy()
 
     def reset(self, hidden_units=100, verbose=False):
         if not os.path.exists(self.dir_path):
@@ -110,61 +87,73 @@ class NNValueAgent(Agent):
             torch.save(self.value_function, self.get_value_function_path())
             cprint('>>> Value function created', bcolors.OKGREEN)
 
-    def _reset_search(self, state_info):
-        """Reset the search for a new state"""
-        self.legal_indices = np.arange(len(state_info["legal_moves"]))[state_info["legal_moves"] > 0]
-        self.n_moves = len(self.legal_indices)
-
-        if self.n_moves > 1:
-            self.visits = np.zeros(self.n_moves)
-            self.scores = np.zeros(self.n_moves)
-            self.states = []
-
-            # create a list of states after each move
-            for i in range(self.n_moves):
-                state = self.game.deepcopy()  # without deepcopy, this doesn't work
-                state = state.set_state(state_info)
-                state.move(self.legal_indices[i])
-                self.states.append(state)
-
     def get_value_function_path(self):
         return os.path.join(self.dir_path, "value_function.pkl")
 
-    def evaluate_state(self, state_info: dict):
+    def _evaluate_state_before_roll(self, state, player_id):
         """
-        Evaluate a state using the value function
+        Calculate the expected value of a state before rolling the dice
+        by averaging the values of the states after all possible rolls
         """
-        features = state_to_features(state_info)
-        x = np.array([features])
-        x = torch.tensor(x, dtype=torch.float)
-        y = self.value_function(x).detach().numpy()
-        return y[0]
+        values = np.zeros(len(NNValueAgent.PROBA))
+        indices = np.array([], dtype=int)
+        info = []
 
-    def _get_output(self, state_info: dict):
-        """After all the process to get the action and state evaluation
-        is completed, return the action and evaluation """
-        values = self.scores / self.visits
-        best_index = int(np.argmax(values))
-        evaluation = values[best_index]
-        evaluation = [evaluation, 1 - evaluation] if state_info["current_player"] == 0 else [1 - evaluation, evaluation]
-        action = self.legal_indices[best_index]
-        return {"action": action, "eval": evaluation}
+        # iterate over all rolls
+        for j in range(len(values)):
+            state_2 = state.deepcopy()
+            state_2.n_steps = j             # set the roll
+            state_2_info = state_2.get_state_info()
 
-    def _print_search_results(self, state_info, ev, t, bar_length):
-        """Print the results of the search"""
-        color = bcolors.RED if state_info["current_player"] == 1 else bcolors.BLUE
-        best_value_index = int(np.argmax(ev))
+            indices = np.append(indices, j)
+            info.append(state_2_info)
 
-        cprint('\nSearch EV:')
-        for i in range(self.n_moves):
-            p = ev[i]
-            s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
-            s += bar(p, color, length=bar_length)
-            if i == best_value_index:
-                s += ' <<'
-            print(s)
+            if state_2.is_game_over():
+                values[j] = state_2.get_reward()[player_id]
 
-        print(f"\nTime: {t:.2f} s")
+        # evaluate all states in bulk
+        if len(info):
+            y = self.evaluate_states_after_roll(info)
+            y = y[:, player_id]
+            values[indices] = y
+
+        return np.dot(values, NNValueAgent.PROBA)
+
+    def _get_move_values(self, legal_moves, legal_move_indices, state_info, player_id):
+        """Get the value of each move in legal_moves"""
+        values = np.zeros(len(legal_moves))
+
+        # iterate over all legal moves
+        for i in range(len(legal_move_indices)):
+            state = self.game.deepcopy()
+            state = state.set_state(state_info)
+            move = legal_move_indices[i]
+
+            # get new state after move
+            state.move(move)
+
+            # evaluate state
+            values[i] = self._evaluate_state_before_roll(state, player_id)
+
+        return values
+
+    def _get_best_move(self, state_info):
+        """
+        Get the best move and its expected value
+        after the dice roll
+        """
+        player_id = state_info["current_player"]
+        legal_moves = state_info["legal_moves"]
+        legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
+        values = self._get_move_values(legal_moves, legal_move_indices, state_info, player_id)
+        best_i = np.argmax(values)
+        best_move = legal_move_indices[best_i]
+        best_eval = values[best_i]
+        expected_reward = [best_eval, 1 - best_eval]
+        if player_id == 1:
+            expected_reward = list(reversed(expected_reward))
+        expected_reward = np.array(expected_reward)
+        return best_move, expected_reward
 
     def get_action(self, state_info: dict, verbose=False, bar_length=30, half_life=10) -> dict:
         """
@@ -173,27 +162,33 @@ class NNValueAgent(Agent):
         """
         assert self.value_function is not None
         player_id = state_info["current_player"]
-        legal_moves = state_info["legal_moves"]
-        legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
-        values = self._get_move_values(legal_moves, legal_move_indices, state_info, player_id)
 
         # get best move
-        best_move = legal_move_indices[np.argmax(values)]
-        best_eval = max(values)
-        eval_ = [best_eval, 1 - best_eval]
-        if player_id == 1:
-            eval_ = list(reversed(eval_))
-        eval_ = np.array(eval_)
+        best_move, expected_reward = self._get_best_move(state_info)
+        best_eval = expected_reward[player_id]
 
         if verbose:
             print(f'action {best_move}')
-            color = bcolors.RED if state_info["current_player"] == 1 else bcolors.BLUE
+            color = bcolors.RED if player_id == 1 else bcolors.BLUE
             print(f'{bar(p=best_eval, color=color, length=bar_length)} {best_eval:.3f}')
 
-        return {"action": best_move, "eval": eval_}
+        return {"action": best_move, "eval": expected_reward}
 
-    def get_value_function(self):
-        return self.value_function
+    def print_search_results(self, state_info, ev, t, bar_length):
+        """Print the results of the search"""
+        color = bcolors.RED if state_info["current_player"] == 1 else bcolors.BLUE
+        best_value_index = int(np.argmax(ev))
+
+        cprint('\nSearch EV:')
+        for i in range(len(self.legal_indices)):
+            p = ev[i]
+            s = f'{self.legal_indices[i]:3})  {p:6.2%}  '
+            s += bar(p, color, length=bar_length)
+            if i == best_value_index:
+                s += ' <<'
+            print(s)
+
+        print(f"\nTime: {t:.2f} s")
 
     def train_value_function(self, x, y, lr=0.1, momentum=0.9, verbose=True):
         """Train the value function using the training data"""
