@@ -2,6 +2,12 @@ import numpy as np
 
 
 STATES = [
+    {'current_player': 0,
+     'n_steps': 1,
+     'round': 212,
+     'board': np.array([[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 6],
+                        [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4]])
+     },
     {'current_player': 1,
      'n_steps': 2,
      'round': 98,
