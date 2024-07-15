@@ -1,6 +1,8 @@
 # Project
 data/
 tests/data/
+ur_games/
+ur_models/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
