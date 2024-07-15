@@ -337,8 +337,8 @@ class RoyalGameOfUr(Game):
 
         # reset game state
         self.agents = agents
-        for agents in self.agents:
-            agents.reset()
+        for agent in self.agents:
+            agent.reset()
         if do_reset:
             self.reset()
 
