@@ -4,7 +4,6 @@ from agents.nn_value_agent import NNValueAgent
 from game.royal_game_of_ur import RoyalGameOfUr
 
 
-
 def main():
     root_dir = os.getcwd()
 
@@ -18,12 +17,11 @@ def main():
                         games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
-    training.run(n_cycles=99,
-                 n_games_per_cycle=20,
-                 n_epochs_policy=500,
-                 n_epochs_value=500,
+    training.run(n_cycles=100,
+                 n_games_per_cycle=10,
                  halflife=1,
-                 lr=0.01,
+                 lr=0.1,
+                 n_evaluation_games=10,
                  verbose=False)
 
 

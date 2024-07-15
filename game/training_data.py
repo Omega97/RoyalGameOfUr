@@ -107,7 +107,7 @@ def create_dataset_from_game_files(game_files, halflife=10):
     return x, y_policy, y_value
 
 
-def multiple_one_hot(x: np.array, n_values: np.array, dtype=np.float64):  # todo use in sate_to_features
+def multiple_one_hot(x: np.array, n_values: np.array, dtype=np.float64):
     """create the one-hot vector with multiple distributions"""
 
     print(x)

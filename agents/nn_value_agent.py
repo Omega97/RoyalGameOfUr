@@ -217,7 +217,7 @@ class NNValueAgent(Agent):
         """Train the value function using the training data"""
         return self.train_value_function(x, y_value, lr=lr, verbose=verbose)
 
-    def evaluate(self, n_games=500, show_game=False):
+    def evaluate(self, n_games=50, show_game=False):
         """Evaluate the components of the agent (value function)"""
         print(f'\nEvaluating agent on {n_games} games...')
 
