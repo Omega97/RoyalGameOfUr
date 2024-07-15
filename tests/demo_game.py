@@ -53,17 +53,22 @@ def demo_game_random():
 def demo_game_value_agent(value_path='..data/ur_models/model.pkl'):
     """Play a game between two NN-based agents and print the result"""
     agents = list()
-    agents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=value_path))
-    agents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=value_path))
+    agents.append(ValueAgent(game_instance=RoyalGameOfUr(),
+                             value_path=value_path))
+    agents.append(ValueAgent(game_instance=RoyalGameOfUr(),
+                             value_path=value_path))
     assert len(agents) == 2
     play_game(*agents, do_plot=False)
 
 
-def demo_game_nn_value_agent(dir_path='data/ur_models'):
+def demo_game_nn_value_agent(dir_path='..//ur_models'):
     """Play a game between two NN-based agents and print the result"""
     agents = list()
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
-    agents.append(RandomAgent())
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
+                               models_dir_path=dir_path))
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
+                               models_dir_path=dir_path))
+    # agents.append(RandomAgent())
     assert len(agents) == 2
     play_game(*agents, do_plot=True)
 

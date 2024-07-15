@@ -29,7 +29,7 @@ class NNValueAgent(Agent):
                  models_dir_path,
                  depth=2,
                  hidden_units=100,
-                 reward_half_life=20,
+                 reward_half_life=10,
                  verbose=False):
 
         self.game = game_instance
@@ -51,16 +51,24 @@ class NNValueAgent(Agent):
     def get_value_function(self):
         return self.value_function
 
-    def reset_value_function(self, input_size, hidden_units, output_size, weight_range=0.01):
+    def reset_value_function(self, input_size, hidden_units, output_size, weight_range=0.1):
         """ MLP value function """
         cprint('Resetting value function', bcolors.WARNING)
+
+        # self.value_function = (
+        #     nn.Sequential(
+        #         nn.Linear(input_size, output_size),
+        #         nn.Sigmoid()
+        #     ))
+
         self.value_function = (
             nn.Sequential(
                 nn.Linear(input_size, hidden_units),
-                nn.Sigmoid(),
+                nn.ReLU(),
                 nn.Linear(hidden_units, output_size),
                 nn.Sigmoid()
             ))
+
         initialize_weights(self.value_function, weight_range)
 
     def evaluate_states_after_roll(self, state_info_list: List[Dict]):
@@ -76,16 +84,16 @@ class NNValueAgent(Agent):
         if not os.path.exists(self.dir_path):
             os.makedirs(self.dir_path)
         try:
-            # print(f'\n>>> Trying to load models from {self.get_value_function_path()}')
+            # cprint(f'\nTrying to load model from {self.get_value_function_path()}...', bcolors.WARNING)
             self.value_function = torch.load(self.get_value_function_path())
-            # print('>>> Models loaded successfully!')
+            # cprint('Model loaded successfully!', bcolors.OKGREEN)
         except FileNotFoundError:
-            cprint('\n>>> Loading failed. Creating new models...', bcolors.WARNING)
+            cprint('\nLoading failed. Creating new models...', bcolors.WARNING)
             self.reset_value_function(input_size=self.game_input_size,
                                       hidden_units=hidden_units,
                                       output_size=2)
             torch.save(self.value_function, self.get_value_function_path())
-            cprint('>>> Value function created', bcolors.OKGREEN)
+            cprint('\nValue function created', bcolors.OKGREEN)
 
     def get_value_function_path(self):
         return os.path.join(self.dir_path, "value_function.pkl")
@@ -195,11 +203,12 @@ class NNValueAgent(Agent):
         if self.value_function is None:
             raise ValueError("Value function is not set")
         elif verbose:
-            cprint("\n>>> Training value function", bcolors.WARNING)
+            cprint(f"\nTraining value function on {len(x)} data-points", bcolors.WARNING)
 
         # Instantiate loss function and optimizer
         criterion = nn.MSELoss()
-        optimizer = optim.SGD(self.value_function.parameters(), lr=lr, momentum=momentum)
+        optimizer = optim.SGD(self.value_function.parameters(),
+                              lr=lr, momentum=momentum)
 
         # update
         optimizer.zero_grad()
@@ -208,10 +217,28 @@ class NNValueAgent(Agent):
         loss.backward()
         optimizer.step()
 
+        output_2 = self.value_function(x.float())
+        rmse_1 = torch.sqrt(criterion(output, y)).item()
+        rmse_2 = torch.sqrt(criterion(output_2, y)).item()
+        p = (rmse_2 - rmse_1) / rmse_1
+        cprint(f'RMSE: {rmse_1:.3f} -> {rmse_2:.3f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
+
+        # v_x = x.detach().numpy()
+        # v_y = y.detach().numpy()
+        # for i in range(v_x.shape[0]):
+        #     for j in range(v_x.shape[1]):
+        #         print('#' if v_x[i][j] == 1 else '.', end='')
+        #     print(f'  {v_y[i][0]:.3f}, {v_y[i][1]:.3f}  {output[i][0]:.3f}, {output[i][1]:.3f}')
+        #
+        # print()
+        # print(x.shape)
+        # print(y.shape)
+        # input()
+
         # save value function
-        print(f'Saving value function to {self.get_value_function_path()}')
+        cprint(f'Saving value function to {self.get_value_function_path()}')
         torch.save(self.value_function, self.get_value_function_path())
-        cprint(f'Function saved', bcolors.OKGREEN)
+        cprint(f'Value function saved', bcolors.OKGREEN)
 
     def train_agent(self, x, y_policy, y_value, lr=0.1, verbose=True):
         """Train the value function using the training data"""

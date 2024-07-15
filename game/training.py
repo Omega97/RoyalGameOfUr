@@ -54,7 +54,7 @@ class Training:
 
         self.agents = None
 
-    def _load_agents(self, verbose=False):
+    def load_agents(self, verbose=False):
         """ Create and set agents """
         self.agents = (deepcopy(self.agent_instance),
                        deepcopy(self.agent_instance))
@@ -72,17 +72,18 @@ class Training:
         game_copy.play(self.agents, verbose=verbose)
         game_copy.save(path=f"{self.games_dir}\\game_{n}.pkl", verbose=verbose)
 
-    def _play_self_play_games(self, n_games, verbose=False):
+    def play_self_play_games(self, n_games, verbose=False):
         """ Play self-play games and save them to the database """
         for i in range(n_games):
-            print(f'Playing game {i+1}/{n_games}')
+            print(f'\rPlaying game {i+1}/{n_games}', end=' ')
             self.play_game(verbose=verbose)
+        print()
 
     def _get_game_files(self):
         """ Return a list of game files """
         return [f"{self.games_dir}\\{f}" for f in os.listdir(self.games_dir)]
 
-    def _convert_games_to_training_data(self, halflife=1):
+    def convert_games_to_training_data(self, halflife=1):
         """
         Convert the games played by the agent to training data
         and store them in the instance variables X, y_policy, y_value
@@ -96,7 +97,7 @@ class Training:
         self.X, self.y_policy, self.y_value = create_dataset_from_game_files(game_files=game_files,
                                                                              halflife=halflife)
 
-    def _train_agent(self, lr=0.1):
+    def train_agent(self, lr=0.1):
         """
         Train the policy and value function using
         the training data, then save the trained models.
@@ -105,22 +106,22 @@ class Training:
                                         y_policy=self.y_policy,
                                         y_value=self.y_value,
                                         lr=lr)
-        # self.agent_instance.save_models()
 
-    def _evaluate_agent(self, n_evaluation_games):
+    def evaluate_agent(self, n_evaluation_games):
         """Call the evaluate method of the agent if it exists"""
-        if hasattr(self.agent_instance, 'evaluate'):
-            print('\nEvaluating agent...')
-            self.agent_instance.reset()
-            self.agent_instance.evaluate(n_evaluation_games)
+        if n_evaluation_games:
+            if hasattr(self.agent_instance, 'evaluate'):
+                print('\nEvaluating agent...')
+                self.agent_instance.reset()
+                self.agent_instance.evaluate(n_evaluation_games)
 
-    def _delete_games(self):
+    def delete_games(self):
         """ Delete the games from the database """
         for f in os.listdir(self.games_dir):
             os.remove(f"{self.games_dir}\\{f}")
 
     def run(self, n_cycles, n_games_per_cycle,
-            halflife=20, lr=0.1, n_evaluation_games=50, verbose=True):
+            halflife=20, lr=0.1, n_evaluation_games=0, verbose=True):
         """ Run the training loop
         - load two copies of the agent
         - play self-play games
@@ -129,9 +130,9 @@ class Training:
         """
         for i in range(n_cycles):
             print(f'\n\nTraining cycle {i+1}/{n_cycles}\n')
-            self._load_agents(verbose=verbose)
-            self._play_self_play_games(n_games_per_cycle, verbose=verbose)
-            self._convert_games_to_training_data(halflife=halflife)
-            self._train_agent(lr=lr)
-            self._delete_games()
-            self._evaluate_agent(n_evaluation_games)
+            self.load_agents(verbose=verbose)
+            self.play_self_play_games(n_games_per_cycle, verbose=verbose)
+            self.convert_games_to_training_data(halflife=halflife)
+            self.train_agent(lr=lr)
+            self.delete_games()
+            self.evaluate_agent(n_evaluation_games)

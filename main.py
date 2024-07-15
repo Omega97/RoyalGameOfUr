@@ -17,12 +17,13 @@ def main():
                         games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
-    training.run(n_cycles=100,
-                 n_games_per_cycle=10,
-                 halflife=1,
-                 lr=0.1,
-                 n_evaluation_games=10,
+    training.run(n_cycles=1000,
+                 n_games_per_cycle=30,
+                 halflife=5,
+                 lr=1.,
                  verbose=False)
+
+    # training.evaluate_agent(n_evaluation_games=30)
 
 
 if __name__ == '__main__':
