@@ -63,6 +63,8 @@ def demo_game_value_agent(value_path='..data/ur_models/model.pkl'):
 
 def demo_game_nn_value_agent(dir_path='..//ur_models'):
     """Play a game between two NN-based agents and print the result"""
+    np.random.seed(1)
+
     agents = list()
     agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
                                models_dir_path=dir_path))

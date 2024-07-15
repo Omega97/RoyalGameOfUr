@@ -127,9 +127,9 @@ class NNValueAgent(Agent):
 
         return np.dot(values, NNValueAgent.PROBA)
 
-    def _get_move_values(self, legal_moves, legal_move_indices, state_info, player_id):
+    def _get_move_values(self, legal_move_indices, state_info, player_id):
         """Get the value of each move in legal_moves"""
-        values = np.zeros(len(legal_moves))
+        values = np.zeros(len(legal_move_indices))
 
         # iterate over all legal moves
         for i in range(len(legal_move_indices)):
@@ -141,7 +141,11 @@ class NNValueAgent(Agent):
             state.move(move)
 
             # evaluate state
-            values[i] = self._evaluate_state_before_roll(state, player_id)
+            if state.is_game_over():
+                value = state.get_reward()[player_id]
+            else:
+                value = self._evaluate_state_before_roll(state, player_id)
+            values[i] = value
 
         return values
 
@@ -150,10 +154,14 @@ class NNValueAgent(Agent):
         Get the best move and its expected value
         after the dice roll
         """
+
+        # get move values
         player_id = state_info["current_player"]
         legal_moves = state_info["legal_moves"]
         legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
-        values = self._get_move_values(legal_moves, legal_move_indices, state_info, player_id)
+        values = self._get_move_values(legal_move_indices, state_info, player_id)
+
+        # pick move with best value
         best_i = np.argmax(values)
         best_move = legal_move_indices[best_i]
         best_eval = values[best_i]
@@ -161,12 +169,13 @@ class NNValueAgent(Agent):
         if player_id == 1:
             expected_reward = list(reversed(expected_reward))
         expected_reward = np.array(expected_reward)
+
         return best_move, expected_reward
 
     def get_action(self, state_info: dict, verbose=False, bar_length=30, half_life=10) -> dict:
         """
-        Evaluate all the possible moves and return the one
-        with the highest expected value.
+        Evaluate all the possible moves and return
+        the one with the highest expected value.
         """
         assert self.value_function is not None
         player_id = state_info["current_player"]
@@ -206,9 +215,12 @@ class NNValueAgent(Agent):
             cprint(f"\nTraining value function on {len(x)} data-points", bcolors.WARNING)
 
         # Instantiate loss function and optimizer
+        # criterion = nn.MSELoss()
+        # optimizer = optim.SGD(self.value_function.parameters(),
+        #                       lr=lr, momentum=momentum)
+        # Define Cross-Entropy Loss
         criterion = nn.MSELoss()
-        optimizer = optim.SGD(self.value_function.parameters(),
-                              lr=lr, momentum=momentum)
+        optimizer = optim.Adam(self.value_function.parameters(), lr=lr)
 
         # update
         optimizer.zero_grad()
@@ -218,22 +230,9 @@ class NNValueAgent(Agent):
         optimizer.step()
 
         output_2 = self.value_function(x.float())
-        rmse_1 = torch.sqrt(criterion(output, y)).item()
-        rmse_2 = torch.sqrt(criterion(output_2, y)).item()
-        p = (rmse_2 - rmse_1) / rmse_1
-        cprint(f'RMSE: {rmse_1:.3f} -> {rmse_2:.3f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
-
-        # v_x = x.detach().numpy()
-        # v_y = y.detach().numpy()
-        # for i in range(v_x.shape[0]):
-        #     for j in range(v_x.shape[1]):
-        #         print('#' if v_x[i][j] == 1 else '.', end='')
-        #     print(f'  {v_y[i][0]:.3f}, {v_y[i][1]:.3f}  {output[i][0]:.3f}, {output[i][1]:.3f}')
-        #
-        # print()
-        # print(x.shape)
-        # print(y.shape)
-        # input()
+        loss_2 = criterion(output_2, y)
+        p = (loss_2 - loss) / loss
+        cprint(f'Loss: {loss:.5f} -> {loss_2:.5f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
 
         # save value function
         cprint(f'Saving value function to {self.get_value_function_path()}')

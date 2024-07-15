@@ -17,10 +17,10 @@ def main():
                         games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
-    training.run(n_cycles=1000,
-                 n_games_per_cycle=30,
+    training.run(n_cycles=10_000,
+                 n_games_per_cycle=10,
                  halflife=5,
-                 lr=1.,
+                 lr=.001,
                  verbose=False)
 
     # training.evaluate_agent(n_evaluation_games=30)
