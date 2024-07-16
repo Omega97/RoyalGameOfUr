@@ -55,12 +55,6 @@ class NNValueAgent(Agent):
         """ MLP value function """
         cprint('Resetting value function', bcolors.WARNING)
 
-        # self.value_function = (
-        #     nn.Sequential(
-        #         nn.Linear(input_size, output_size),
-        #         nn.Sigmoid()
-        #     ))
-
         self.value_function = (
             nn.Sequential(
                 nn.Linear(input_size, hidden_units),

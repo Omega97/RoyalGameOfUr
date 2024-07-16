@@ -18,9 +18,9 @@ def main():
                         )
 
     training.run(n_cycles=10_000,
-                 n_games_per_cycle=10,
-                 halflife=5,
-                 lr=.001,
+                 n_games_per_cycle=32,
+                 halflife=1,
+                 lr=.00001,
                  verbose=False)
 
     # training.evaluate_agent(n_evaluation_games=30)
