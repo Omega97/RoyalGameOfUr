@@ -4,6 +4,7 @@ from game.royal_game_of_ur import RoyalGameOfUr
 from agents.random_agent import RandomAgent
 from agents.value_agent import ValueAgent
 from agents.nn_value_agent import NNValueAgent
+from agents.human_agent import HumanAgent
 
 
 def plot_game(game_recap):
@@ -53,24 +54,31 @@ def demo_game_random():
 def demo_game_value_agent(value_path='..data/ur_models/model.pkl'):
     """Play a game between two NN-based agents and print the result"""
     agents = list()
-    agents.append(ValueAgent(game_instance=RoyalGameOfUr(),
-                             value_path=value_path))
-    agents.append(ValueAgent(game_instance=RoyalGameOfUr(),
-                             value_path=value_path))
+    agents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=value_path))
+    agents.append(ValueAgent(game_instance=RoyalGameOfUr(), value_path=value_path))
     assert len(agents) == 2
     play_game(*agents, do_plot=False)
 
 
 def demo_game_nn_value_agent(dir_path='..//ur_models'):
     """Play a game between two NN-based agents and print the result"""
-    np.random.seed(1)
+    np.random.seed(13)  # 13 0 1 14 3 2
 
     agents = list()
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
-                               models_dir_path=dir_path))
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
-                               models_dir_path=dir_path))
     # agents.append(RandomAgent())
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
+    assert len(agents) == 2
+    play_game(*agents, do_plot=True)
+
+
+def demo_game_nn_value_vs_human(dir_path='..//ur_models'):
+    """Play a game between two NN-based agents and print the result"""
+    np.random.seed(13)  # 13 0 1 14 3 2
+
+    agents = list()
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
+    agents.append(HumanAgent())
     assert len(agents) == 2
     play_game(*agents, do_plot=True)
 
@@ -78,4 +86,5 @@ def demo_game_nn_value_agent(dir_path='..//ur_models'):
 if __name__ == '__main__':
     # demo_game_random()
     # demo_game_value_agent()
-    demo_game_nn_value_agent()
+    # demo_game_nn_value_agent()
+    demo_game_nn_value_vs_human()
