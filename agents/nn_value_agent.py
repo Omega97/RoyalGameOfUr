@@ -12,7 +12,10 @@ from src.utils import bar, bcolors, cprint
 
 
 def initialize_weights(model, weight_range=0.1):
-    """ Initialize weights within the given range """
+    """
+    Initialize weights and biases
+    of the model within the given range
+    """
     assert weight_range > 0, "Weight range must be positive"
     for layer in model.children():
         if isinstance(layer, nn.Linear):
@@ -28,7 +31,6 @@ class NNValueAgent(Agent):
                  game_instance,
                  models_dir_path,
                  depth=2,
-                 hidden_units=100,
                  reward_half_life=10,
                  verbose=False):
 
@@ -43,7 +45,7 @@ class NNValueAgent(Agent):
         self.scores = None
         self.states = None
 
-        self.reset(hidden_units=hidden_units, verbose=verbose)
+        self.reset(verbose=verbose)
 
     def __repr__(self):
         return f"NewNNValueAgent(depth={self.depth})"
@@ -51,14 +53,25 @@ class NNValueAgent(Agent):
     def get_value_function(self):
         return self.value_function
 
-    def reset_value_function(self, input_size, hidden_units, output_size, weight_range=0.1):
+    def reset_value_function(self, input_size, hidden_units=160,
+                             weight_range=0.1, output_size=2):
         """ MLP value function """
         cprint('Resetting value function', bcolors.WARNING)
 
+        # architecture 1
+        # self.value_function = (
+        #     nn.Sequential(
+        #         nn.Linear(input_size, hidden_units),
+        #         nn.ReLU(),
+        #         nn.Linear(hidden_units, output_size),
+        #         nn.Sigmoid()
+        #     ))
+
+        # architecture 2
         self.value_function = (
             nn.Sequential(
                 nn.Linear(input_size, hidden_units),
-                nn.ReLU(),
+                nn.Softplus(),
                 nn.Linear(hidden_units, output_size),
                 nn.Sigmoid()
             ))
@@ -74,7 +87,7 @@ class NNValueAgent(Agent):
         x = torch.tensor(x, dtype=torch.float)
         return self.value_function(x).detach().numpy()
 
-    def reset(self, hidden_units=100, verbose=False):
+    def reset(self, verbose=False):
         if not os.path.exists(self.dir_path):
             os.makedirs(self.dir_path)
         try:
@@ -83,9 +96,7 @@ class NNValueAgent(Agent):
             # cprint('Model loaded successfully!', bcolors.OKGREEN)
         except FileNotFoundError:
             cprint('\nLoading failed. Creating new models...', bcolors.WARNING)
-            self.reset_value_function(input_size=self.game_input_size,
-                                      hidden_units=hidden_units,
-                                      output_size=2)
+            self.reset_value_function(input_size=self.game_input_size)
             torch.save(self.value_function, self.get_value_function_path())
             cprint('\nValue function created', bcolors.OKGREEN)
 
@@ -201,32 +212,65 @@ class NNValueAgent(Agent):
 
         print(f"\nTime: {t:.2f} s")
 
-    def train_value_function(self, x, y, lr=0.1, momentum=0.9, verbose=True):
+    def train_value_function(self, x, y_target, lr=0.1,
+                             momentum=0.9, n_epoch=1, verbose=True):
         """Train the value function using the training data"""
         if self.value_function is None:
             raise ValueError("Value function is not set")
         elif verbose:
-            cprint(f"\nTraining value function on {len(x)} data-points", bcolors.WARNING)
+            cprint(f"Training value function on {len(x)} data-points", bcolors.CYAN)
 
-        # Instantiate loss function and optimizer
-        # criterion = nn.MSELoss()
-        # optimizer = optim.SGD(self.value_function.parameters(),
-        #                       lr=lr, momentum=momentum)
-        # Define Cross-Entropy Loss
+        # Define loss function
         criterion = nn.MSELoss()
+        # criterion = nn.modules.loss.BCELoss()
+
+        # Define optimizer
+        # optimizer = optim.SGD(self.value_function.parameters(), lr=lr, momentum=momentum)
         optimizer = optim.Adam(self.value_function.parameters(), lr=lr)
+        # optimizer = optim.Adagrad(self.value_function.parameters(), lr=lr)
+
+        y_model_before = self.value_function(x.float())
+        loss_before = criterion(y_model_before, y_target)
+        y_model_before = y_model_before.detach().numpy()
+        rmse_before = np.sqrt(np.mean((y_target[:, 0] - y_model_before[:, 0]).numpy() ** 2))
 
         # update
-        optimizer.zero_grad()
-        output = self.value_function(x.float())
-        loss = criterion(output, y)
-        loss.backward()
-        optimizer.step()
+        for epoch in range(n_epoch):
+            # Forward pass
+            y_model = self.value_function(x.float())
+            loss = criterion(y_model, y_target)
 
-        output_2 = self.value_function(x.float())
-        loss_2 = criterion(output_2, y)
-        p = (loss_2 - loss) / loss
-        cprint(f'Loss: {loss:.5f} -> {loss_2:.5f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
+            # Backward pass
+            optimizer.zero_grad()
+            loss.backward()
+
+            # Optimize
+            optimizer.step()
+
+        # print data and results
+        y_model_after = self.value_function(x.float()).detach().numpy()
+        got_better = np.array(np.abs(y_target[:, 0] - y_model_before[:, 0]) > abs(y_target[:, 0] - y_model_after[:, 0]))
+        p_got_better = np.mean(got_better.flatten())
+        cprint(f'Got better: {p_got_better:.1%}', bcolors.WARNING if p_got_better < 0.5 else bcolors.OKGREEN)
+
+        rmse_after = np.sqrt(np.mean((y_target[:, 0] - y_model_after[:, 0]).numpy() ** 2))
+        p = (rmse_after - rmse_before) / rmse_before
+        cprint(f'RMSE: {rmse_before:.5f} -> {rmse_after:.5f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
+
+        # for i in range(len(x)):
+        #     for j in range(len(x[i])):
+        #         if x[i][j] == 0:
+        #             print('_', end='')
+        #         else:
+        #             print('#', end='')
+        #     print(f'  {y_target[i][0]:7.2%} | {y_model[i][0]:6.2%} -> ', end='')
+        #     cprint(f'{y_model_after[i][0]:6.2%}', bcolors.OKGREEN if got_better[i] else bcolors.FAIL)
+        # input('>>>')
+
+        output_after = self.value_function(x.float())
+        loss_after = criterion(output_after, y_target)
+        p = (loss_after - loss_before) / loss_before
+        cprint(f'Loss: {loss_before:.5f} -> {loss_after:.5f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
 
         # save value function
         cprint(f'Saving value function to {self.get_value_function_path()}')
