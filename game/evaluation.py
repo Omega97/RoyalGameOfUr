@@ -35,8 +35,7 @@ def evaluation_match(agent_1, agent_2, n_games,
             n_left = n_games - j_stop
             speed = (j_stop - j_start) / (times[j_stop] - times[j_start])
             eta = n_left / speed
-            print(f'\rgame: {i + 1:3} / {n_games:3}   '
-                  f'score: {score[player]:.3f}   '
+            print(f'\rscore: {out[player]:3.0f} / {i + 1:3}   '
                   f'elo: {e[player]:.0f}   '
                   f'eta: {eta // 60:.0f} min {eta % 60:.0f} s', end='  ')
 

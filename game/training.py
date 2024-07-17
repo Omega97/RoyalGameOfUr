@@ -91,7 +91,7 @@ class Training:
 
         # choose files
         game_files = self._get_game_files()
-        print(f'\nConverting {len(game_files)} games to training data...')
+        print(f'Converting {len(game_files)} games to training data...')
 
         # create dataset
         self.X, self.y_policy, self.y_value = create_dataset_from_game_files(game_files=game_files,

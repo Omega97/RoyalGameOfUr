@@ -58,10 +58,9 @@ def test_eval_initial_states():
     print(f'avg_val = {value_avg:.2%}')
 
     print()
-    print(f'value_0 = {value_0:5.2%}')
-    # print(f'value_1 = {value_1:.1%}')
-    print(f'          {value_2:5.2%}')
-    print(f'          {value_0 - value_2:+5.2%}   <-  (should be 0%)')
+    print(f'value_0 = {value_0:6.2%}')
+    print(f'          {value_2:6.2%}')
+    print(f'          {value_0 - value_2:+6.2%}   <-  (should be 0%)')
 
 
 def test_get_action():

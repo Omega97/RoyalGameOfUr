@@ -17,9 +17,9 @@ def main():
                         games_dir=os.path.join(root_dir, 'ur_games')
                         )
 
-    training.run(n_cycles=10_000,
+    training.run(n_cycles=1000,
                  n_games_per_cycle=32,
-                 halflife=1,
+                 halflife=30,
                  lr=.00001,
                  verbose=False)
 

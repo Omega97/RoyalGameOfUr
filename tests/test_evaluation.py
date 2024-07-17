@@ -10,7 +10,6 @@ def main(n_games=50):
     np.random.seed(0)
 
     agent_1 = NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path='../ur_models')
-    # agent_1 = RandomAgent()
     agent_2 = RandomAgent()
 
     t = time()
