@@ -1,20 +1,23 @@
-import numpy as np
 from time import time
 from game.royal_game_of_ur import RoyalGameOfUr
 from game.evaluation import evaluation_match
-from agents.random_agent import RandomAgent
 from agents.nn_value_agent import NNValueAgent
+# from agents.dummy_agent import DummyAgent
 
 
-def main(n_games=50):
-    np.random.seed(0)
-
-    agent_1 = NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path='../ur_models')
-    agent_2 = RandomAgent()
+def main(n_games=100):
+    agents = list()
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
+                               models_dir_path='../ur_models',
+                               value_function_name='value_function.pkl'))
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
+                               models_dir_path='../ur_models',
+                               value_function_name='2_6.pkl'))
+    assert len(agents) == 2
 
     t = time()
-    evaluation_match(agent_1, agent_2, n_games=n_games, player=0)
-    evaluation_match(agent_2, agent_1, n_games=n_games, player=1)
+    evaluation_match(agents[0], agents[1], n_games=n_games, player=0)
+    evaluation_match(agents[1], agents[0], n_games=n_games, player=1)
     t = time() - t
 
     print(f'\n time = {t:.2f} s')

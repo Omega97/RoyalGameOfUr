@@ -72,11 +72,12 @@ class Training:
         game_copy.play(self.agents, verbose=verbose)
         game_copy.save(path=f"{self.games_dir}\\game_{n}.pkl", verbose=verbose)
 
-    def play_self_play_games(self, n_games, verbose=False):
+    def play_self_play_games(self, n_games, show_games=False, verbose=True):
         """ Play self-play games and save them to the database """
         for i in range(n_games):
-            print(f'\rPlaying game {i+1}/{n_games}', end=' ')
-            self.play_game(verbose=verbose)
+            if verbose:
+                print(f'\rPlaying game {i+1}/{n_games}', end=' ')
+            self.play_game(verbose=show_games)
         print()
 
     def _get_game_files(self):
@@ -97,15 +98,14 @@ class Training:
         self.X, self.y_policy, self.y_value = create_dataset_from_game_files(game_files=game_files,
                                                                              halflife=halflife)
 
-    def train_agent(self, lr=0.1):
+    def train_agent(self):
         """
         Train the policy and value function using
         the training data, then save the trained models.
         """
         self.agent_instance.train_agent(x=self.X,
                                         y_policy=self.y_policy,
-                                        y_value=self.y_value,
-                                        lr=lr)
+                                        y_value=self.y_value)
 
     def evaluate_agent(self, n_evaluation_games):
         """Call the evaluate method of the agent if it exists"""
@@ -121,7 +121,8 @@ class Training:
             os.remove(f"{self.games_dir}\\{f}")
 
     def run(self, n_cycles, n_games_per_cycle,
-            halflife=20, lr=0.1, n_evaluation_games=0, verbose=True):
+            halflife=20, n_evaluation_games=0,
+            show_games=False, verbose=True):
         """ Run the training loop
         - load two copies of the agent
         - play self-play games
@@ -131,8 +132,8 @@ class Training:
         for i in range(n_cycles):
             print(f'\n\nTraining cycle {i+1}/{n_cycles}\n')
             self.load_agents(verbose=verbose)
-            self.play_self_play_games(n_games_per_cycle, verbose=verbose)
+            self.play_self_play_games(n_games_per_cycle, show_games=show_games, verbose=verbose)
             self.convert_games_to_training_data(halflife=halflife)
-            self.train_agent(lr=lr)
+            self.train_agent()
             self.delete_games()
             self.evaluate_agent(n_evaluation_games)
