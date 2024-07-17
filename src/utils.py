@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 
 class bcolors:
     """ Author: Omar
@@ -46,3 +49,20 @@ def bar(p, color=bcolors.RED, length=20, do_write_p=False):
     if do_write_p:
         out += f' {p:7.1%}'
     return out
+
+
+def initialize_weights(model, weight_range=0.1):
+    """
+    Initialize weights and biases of the model
+    within the given range (in-place operation)
+    """
+    assert weight_range > 0, "Weight range must be positive"
+    for layer in model.children():
+        if isinstance(layer, torch.nn.Linear):
+            torch.nn.init.uniform_(layer.weight, -weight_range, weight_range)
+            torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
+
+
+def binary_array_to_indices(a):
+    """Convert a binary array to a list of indices"""
+    return np.where(a)[0]
