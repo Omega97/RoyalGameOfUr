@@ -2,25 +2,12 @@ import os.path
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
 from typing import List, Dict
 from game.evaluation import evaluation_match
 from game.agent import Agent
 from agents.random_agent import RandomAgent
 from game.training_data import state_to_features
 from src.utils import bar, bcolors, cprint
-
-
-def initialize_weights(model, weight_range=0.1):
-    """
-    Initialize weights and biases
-    of the model within the given range
-    """
-    assert weight_range > 0, "Weight range must be positive"
-    for layer in model.children():
-        if isinstance(layer, nn.Linear):
-            torch.nn.init.uniform_(layer.weight, -weight_range, weight_range)
-            torch.nn.init.uniform_(layer.bias, -weight_range, weight_range)
 
 
 class NNValueAgent(Agent):
@@ -30,13 +17,15 @@ class NNValueAgent(Agent):
     def __init__(self,
                  game_instance,
                  models_dir_path,
-                 depth=2,
+                 value_function_builder=None,
+                 value_function_name="value_function.pkl",
                  reward_half_life=10,
                  verbose=False):
 
         self.game = game_instance
         self.dir_path = models_dir_path
-        self.depth = depth
+        self.value_function_builder = value_function_builder
+        self.value_function_name = value_function_name
         self.gamma = np.log(2) / reward_half_life
         self.game_input_size = game_instance.INPUT_SIZE
 
@@ -47,36 +36,14 @@ class NNValueAgent(Agent):
 
         self.reset(verbose=verbose)
 
-    def __repr__(self):
-        return f"NewNNValueAgent(depth={self.depth})"
-
     def get_value_function(self):
         return self.value_function
 
-    def reset_value_function(self, input_size, hidden_units=160,
-                             weight_range=0.1, output_size=2):
+    def reset_value_function(self, input_size, output_size=2):
         """ MLP value function """
         cprint('Resetting value function', bcolors.WARNING)
-
-        # architecture 1
-        # self.value_function = (
-        #     nn.Sequential(
-        #         nn.Linear(input_size, hidden_units),
-        #         nn.ReLU(),
-        #         nn.Linear(hidden_units, output_size),
-        #         nn.Sigmoid()
-        #     ))
-
-        # architecture 2
-        self.value_function = (
-            nn.Sequential(
-                nn.Linear(input_size, hidden_units),
-                nn.Softplus(),
-                nn.Linear(hidden_units, output_size),
-                nn.Sigmoid()
-            ))
-
-        initialize_weights(self.value_function, weight_range)
+        assert self.value_function_builder is not None, "Value function builder is not set"
+        self.value_function = self.value_function_builder(input_size, output_size)
 
     def evaluate_states_after_roll(self, state_info_list: List[Dict]):
         """
@@ -101,7 +68,7 @@ class NNValueAgent(Agent):
             cprint('\nValue function created', bcolors.OKGREEN)
 
     def get_value_function_path(self):
-        return os.path.join(self.dir_path, "value_function.pkl")
+        return os.path.join(self.dir_path, self.value_function_name)
 
     def _evaluate_state_before_roll(self, state, player_id):
         """
@@ -212,74 +179,75 @@ class NNValueAgent(Agent):
 
         print(f"\nTime: {t:.2f} s")
 
-    def train_value_function(self, x, y_target, lr=0.1,
-                             momentum=0.9, n_epoch=1, verbose=True):
+    def train_value_function(self, x, y_target,
+                             lr=2e-5,
+                             n_epoch=100,
+                             verbose=True):
         """Train the value function using the training data"""
+
+        # Define loss function
+        criterion = nn.modules.loss.MSELoss()
+        # criterion = nn.modules.loss.BCELoss()
+
+        # Define optimizer
+        # optimizer = torch.optim.SGD(self.value_function.parameters(), lr=lr, momentum=0.9)
+        optimizer = torch.optim.Adam(self.value_function.parameters(), lr=lr)
+        # optimizer = torch.optim.Adagrad(self.value_function.parameters(), lr=lr)
+
+        # metrics before training
+        loss_before = 0.
+        rmse_before = 0.
+        if verbose:
+            y_model_before = self.value_function(x.float())
+            loss_before = criterion(y_model_before, y_target)
+            y_model_before = y_model_before.detach().numpy()
+            rmse_before = np.sqrt(np.mean((y_target[:, 0] - y_model_before[:, 0]).numpy() ** 2))
+
+        # update
+        for epoch in range(n_epoch):
+            if verbose:
+                if n_epoch > 1:
+                    if (epoch+1) % 10 == 0:
+                        print(f'\rEpoch {epoch + 1}/{n_epoch}', end='')
+            y_model = self.value_function(x.float())
+            loss = criterion(y_model, y_target)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+        if verbose:
+            if n_epoch > 1:
+                print()
+
+        # metrics after training
+        if verbose:
+            y_model_after = self.value_function(x.float())
+            loss_after = criterion(y_model_after, y_target)
+            y_model_after = y_model_after.detach().numpy()
+            rmse_after = np.sqrt(np.mean((y_target[:, 0] - y_model_after[:, 0]).numpy() ** 2))
+
+            # print data and results
+            p = (rmse_after - rmse_before) / rmse_before
+            message = f'RMSE: {rmse_before:.5f} -> {rmse_after:.5f}  ({p:+.2%})'
+            cprint(message, bcolors.OKGREEN if p < 0 else bcolors.FAIL)
+            p = (loss_after - loss_before) / loss_before
+            message = f'Loss: {loss_before:.5f} -> {loss_after:.5f}  ({p:+.2%})'
+            cprint(message, bcolors.OKGREEN if p < 0 else bcolors.FAIL)
+
+    def train_agent(self, x, y_policy, y_value, verbose=True):
+        """Train the value function using the training data"""
+        # check for value function
         if self.value_function is None:
             raise ValueError("Value function is not set")
         elif verbose:
             cprint(f"Training value function on {len(x)} data-points", bcolors.CYAN)
 
-        # Define loss function
-        criterion = nn.MSELoss()
-        # criterion = nn.modules.loss.BCELoss()
-
-        # Define optimizer
-        # optimizer = optim.SGD(self.value_function.parameters(), lr=lr, momentum=momentum)
-        optimizer = optim.Adam(self.value_function.parameters(), lr=lr)
-        # optimizer = optim.Adagrad(self.value_function.parameters(), lr=lr)
-
-        y_model_before = self.value_function(x.float())
-        loss_before = criterion(y_model_before, y_target)
-        y_model_before = y_model_before.detach().numpy()
-        rmse_before = np.sqrt(np.mean((y_target[:, 0] - y_model_before[:, 0]).numpy() ** 2))
-
-        # update
-        for epoch in range(n_epoch):
-            # Forward pass
-            y_model = self.value_function(x.float())
-            loss = criterion(y_model, y_target)
-
-            # Backward pass
-            optimizer.zero_grad()
-            loss.backward()
-
-            # Optimize
-            optimizer.step()
-
-        # print data and results
-        y_model_after = self.value_function(x.float()).detach().numpy()
-        got_better = np.array(np.abs(y_target[:, 0] - y_model_before[:, 0]) > abs(y_target[:, 0] - y_model_after[:, 0]))
-        p_got_better = np.mean(got_better.flatten())
-        cprint(f'Got better: {p_got_better:.1%}', bcolors.WARNING if p_got_better < 0.5 else bcolors.OKGREEN)
-
-        rmse_after = np.sqrt(np.mean((y_target[:, 0] - y_model_after[:, 0]).numpy() ** 2))
-        p = (rmse_after - rmse_before) / rmse_before
-        cprint(f'RMSE: {rmse_before:.5f} -> {rmse_after:.5f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
-
-        # for i in range(len(x)):
-        #     for j in range(len(x[i])):
-        #         if x[i][j] == 0:
-        #             print('_', end='')
-        #         else:
-        #             print('#', end='')
-        #     print(f'  {y_target[i][0]:7.2%} | {y_model[i][0]:6.2%} -> ', end='')
-        #     cprint(f'{y_model_after[i][0]:6.2%}', bcolors.OKGREEN if got_better[i] else bcolors.FAIL)
-        # input('>>>')
-
-        output_after = self.value_function(x.float())
-        loss_after = criterion(output_after, y_target)
-        p = (loss_after - loss_before) / loss_before
-        cprint(f'Loss: {loss_before:.5f} -> {loss_after:.5f}  ({p:+.2%})', bcolors.OKGREEN if p < 0 else bcolors.FAIL)
+        # run training
+        self.train_value_function(x, y_value, verbose=verbose)
 
         # save value function
         cprint(f'Saving value function to {self.get_value_function_path()}')
         torch.save(self.value_function, self.get_value_function_path())
         cprint(f'Value function saved', bcolors.OKGREEN)
-
-    def train_agent(self, x, y_policy, y_value, lr=0.1, verbose=True):
-        """Train the value function using the training data"""
-        return self.train_value_function(x, y_value, lr=lr, verbose=verbose)
 
     def evaluate(self, n_games=50, show_game=False):
         """Evaluate the components of the agent (value function)"""
