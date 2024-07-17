@@ -388,6 +388,7 @@ class RoyalGameOfUr(Game):
                "round": self.round,
                "board": self.board,
                "legal_moves": self.get_legal_moves(),
+               "legal_move_indices": np.where(self.get_legal_moves() > 0)[0],
                }
         return deepcopy(out)
 
