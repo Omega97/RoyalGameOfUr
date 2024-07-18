@@ -98,14 +98,15 @@ class Training:
         self.X, self.y_policy, self.y_value = create_dataset_from_game_files(game_files=game_files,
                                                                              halflife=halflife)
 
-    def train_agent(self):
+    def train_agent(self, **kwargs):
         """
         Train the policy and value function using
         the training data, then save the trained models.
         """
         self.agent_instance.train_agent(x=self.X,
                                         y_policy=self.y_policy,
-                                        y_value=self.y_value)
+                                        y_value=self.y_value,
+                                        **kwargs)
 
     def evaluate_agent(self, n_evaluation_games):
         """Call the evaluate method of the agent if it exists"""
@@ -122,7 +123,7 @@ class Training:
 
     def run(self, n_cycles, n_games_per_cycle,
             halflife=20, n_evaluation_games=0,
-            show_games=False, verbose=True):
+            show_games=False, verbose=True, **kwargs):
         """ Run the training loop
         - load two copies of the agent
         - play self-play games
@@ -134,6 +135,6 @@ class Training:
             self.load_agents(verbose=verbose)
             self.play_self_play_games(n_games_per_cycle, show_games=show_games, verbose=verbose)
             self.convert_games_to_training_data(halflife=halflife)
-            self.train_agent()
+            self.train_agent(**kwargs)
             self.delete_games()
             self.evaluate_agent(n_evaluation_games)

@@ -11,7 +11,8 @@ def main():
 
     # Define the architecture of the value function
     def value_function_builder(input_size, output_size,
-                               hidden_units=100, weight_range=0.1):
+                               hidden_units=50,
+                               weight_range=0.1):
         """
         Build a neural network with input_size input units,
         hidden_units hidden units, and output_size output units
@@ -19,9 +20,9 @@ def main():
         value_function = (
             nn.Sequential(
                 nn.Linear(input_size, hidden_units),
-                nn.Softplus(),
+                nn.Softsign(),
                 nn.Linear(hidden_units, hidden_units),
-                nn.Softplus(),
+                nn.Softsign(),
                 nn.Linear(hidden_units, output_size),
                 nn.Sigmoid()
             ))
@@ -39,9 +40,13 @@ def main():
                         games_dir=os.path.join(root_dir, 'ur_games'))
 
     # Run the training process
-    training.run(n_cycles=100,
-                 n_games_per_cycle=200,
-                 halflife=5)
+    training.run(n_cycles=1000,
+                 n_games_per_cycle=100,
+                 halflife=5,
+                 lr=2e-5,
+                 n_epoch=20,
+                 weight_decay=1e-5,
+                 )
 
 
 if __name__ == '__main__':

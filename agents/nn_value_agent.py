@@ -180,8 +180,9 @@ class NNValueAgent(Agent):
         print(f"\nTime: {t:.2f} s")
 
     def train_value_function(self, x, y_target,
-                             lr=2e-5,
+                             lr=0.01,
                              n_epoch=100,
+                             weight_decay=1e-5,
                              verbose=True):
         """Train the value function using the training data"""
 
@@ -191,7 +192,7 @@ class NNValueAgent(Agent):
 
         # Define optimizer
         # optimizer = torch.optim.SGD(self.value_function.parameters(), lr=lr, momentum=0.9)
-        optimizer = torch.optim.Adam(self.value_function.parameters(), lr=lr)
+        optimizer = torch.optim.Adam(self.value_function.parameters(), lr=lr, weight_decay=weight_decay)
         # optimizer = torch.optim.Adagrad(self.value_function.parameters(), lr=lr)
 
         # metrics before training
@@ -233,7 +234,7 @@ class NNValueAgent(Agent):
             message = f'Loss: {loss_before:.5f} -> {loss_after:.5f}  ({p:+.2%})'
             cprint(message, bcolors.OKGREEN if p < 0 else bcolors.FAIL)
 
-    def train_agent(self, x, y_policy, y_value, verbose=True):
+    def train_agent(self, x, y_policy, y_value, verbose=True, **kwargs):
         """Train the value function using the training data"""
         # check for value function
         if self.value_function is None:
@@ -242,7 +243,7 @@ class NNValueAgent(Agent):
             cprint(f"Training value function on {len(x)} data-points", bcolors.CYAN)
 
         # run training
-        self.train_value_function(x, y_value, verbose=verbose)
+        self.train_value_function(x, y_value, verbose=verbose, **kwargs)
 
         # save value function
         cprint(f'Saving value function to {self.get_value_function_path()}')
