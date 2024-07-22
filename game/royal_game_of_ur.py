@@ -87,6 +87,7 @@ class RoyalGameOfUr(Game):
         self.rolls_record = None
         self.player_moves = None
         self.evaluations = None
+        self.n_legal_moves = None
         self.turn_counter = None
 
         self.agents = None
@@ -193,6 +194,7 @@ class RoyalGameOfUr(Game):
         self.game_record = []
         self.rolls_record = []
         self.player_moves = []
+        self.n_legal_moves = []
         self.evaluations = []
         self.turn_counter = 0
 
@@ -288,7 +290,7 @@ class RoyalGameOfUr(Game):
 
         return action, player_eval
 
-    def _update_game_state(self, action, player_eval):
+    def _update_game_state(self, action, player_eval, n_legal_moves):
 
         # update game state
         self.round += 1
@@ -301,6 +303,7 @@ class RoyalGameOfUr(Game):
         self.game_record.append(self.get_state_info())
         self.player_moves.append(action)
         self.evaluations.append(player_eval)
+        self.n_legal_moves.append(n_legal_moves)
 
     def _get_game_recap(self) -> dict:
         """Returns the game recap as a dictionary
@@ -310,6 +313,7 @@ class RoyalGameOfUr(Game):
                 "game_record": self.game_record,
                 "player_on_duty": tuple([s["current_player"] for s in self.game_record]),  # todo check
                 "rolls": self.rolls_record,
+                "n_legal_moves": self.n_legal_moves,
                 "player_moves": self.player_moves,
                 "player_eval": self.evaluations,
                 "is_game_over": self.is_game_over()
@@ -352,7 +356,7 @@ class RoyalGameOfUr(Game):
             assert action in legal_indices, f'Illegal move: {action} not in {legal_indices}\n{self}\n'
 
             # update game state
-            self._update_game_state(action, player_eval)
+            self._update_game_state(action, player_eval, n_legal_moves=len(legal_indices))
 
             # check if the maximum number of turns has been reached
             if max_depth is not None:
