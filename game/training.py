@@ -1,7 +1,9 @@
 import os
+import numpy as np
 from copy import deepcopy
 from game.royal_game_of_ur import RoyalGameOfUr
 from game.training_data import create_dataset_from_game_files
+from src.utils import cprint, bcolors
 
 
 class Training:
@@ -71,14 +73,18 @@ class Training:
         game_copy = self.game.deepcopy()
         game_copy.play(self.agents, verbose=verbose)
         game_copy.save(path=f"{self.games_dir}\\game_{n}.pkl", verbose=verbose)
+        return game_copy.get_reward()
 
     def play_self_play_games(self, n_games, show_games=False, verbose=True):
         """ Play self-play games and save them to the database """
+        _reward = 0.
         for i in range(n_games):
             if verbose:
                 print(f'\rPlaying game {i+1}/{n_games}', end=' ')
-            self.play_game(verbose=show_games)
-        print()
+            _reward += self.play_game(verbose=show_games)
+        if verbose:
+            print()
+            print(f'average reward = {np.round((_reward+1)/(n_games+2), 3)}')
 
     def _get_game_files(self):
         """ Return a list of game files """
@@ -123,7 +129,8 @@ class Training:
 
     def run(self, n_cycles, n_games_per_cycle,
             halflife=20, n_evaluation_games=0,
-            show_games=False, verbose=True, **kwargs):
+            show_games=False, verbose=True,
+            do_delete_games=True, **kwargs):
         """ Run the training loop
         - load two copies of the agent
         - play self-play games
@@ -131,10 +138,11 @@ class Training:
         - train the agent, save the new model in the same directory
         """
         for i in range(n_cycles):
-            print(f'\n\nTraining cycle {i+1}/{n_cycles}\n')
+            cprint(f'\n\n\nTraining cycle {i+1}/{n_cycles}\n', bcolors.BOLD)
             self.load_agents(verbose=verbose)
             self.play_self_play_games(n_games_per_cycle, show_games=show_games, verbose=verbose)
             self.convert_games_to_training_data(halflife=halflife)
             self.train_agent(**kwargs)
-            self.delete_games()
+            if do_delete_games:
+                self.delete_games()
             self.evaluate_agent(n_evaluation_games)

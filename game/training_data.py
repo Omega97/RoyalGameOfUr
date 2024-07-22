@@ -66,7 +66,7 @@ def backpropagation(v, halflife=20):
     return out
 
 
-def create_dataset_from_game_files(game_files, halflife=10):
+def create_dataset_from_game_files(game_files, halflife=0):
     """
     Build the dataset, then return X, y_policy, and y_value as numpy arrays
     """
@@ -109,10 +109,6 @@ def create_dataset_from_game_files(game_files, halflife=10):
 
 def multiple_one_hot(x: np.array, n_values: np.array, dtype=np.float64):
     """create the one-hot vector with multiple distributions"""
-
-    print(x)
-    print(n_values)
-
     assert len(x) == len(n_values)
     w = np.cumsum(np.concatenate((np.zeros(1, dtype=np.int64), n_values[:-1])))
     v = np.zeros(sum(n_values), dtype)
@@ -124,7 +120,6 @@ def _state_to_features(state_info, default_n_dice=4, default_n_pieces=7, board_l
     """
     Convert state info to array (abstract board representation)
     # ['current_player', 'n_steps', 'board', 'board_size', 'legal_moves']
-    # todo fix pieces on the board
     """
     n_dice = state_info.get("n_dice", default_n_dice)
     n_pieces = state_info.get("n_pieces", default_n_pieces)
@@ -150,6 +145,8 @@ def _state_to_features(state_info, default_n_dice=4, default_n_pieces=7, board_l
                 n_pieces + 1
                 )
 
+    print(x)
+    print(n_values)
     v = multiple_one_hot(np.array(x), np.array(n_values))
 
     v = np.concatenate(v, np.array(state_info["legal_moves"]))
