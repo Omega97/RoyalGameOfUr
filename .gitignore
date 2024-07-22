@@ -3,6 +3,8 @@ data/
 tests/data/
 ur_games/
 ur_models/
+ur_games.rar
+ur_models.rar
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
