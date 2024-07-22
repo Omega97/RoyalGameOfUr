@@ -2,7 +2,7 @@ from time import time
 from game.royal_game_of_ur import RoyalGameOfUr
 from game.evaluation import evaluation_match
 from agents.nn_value_agent import NNValueAgent
-from agents.dummy_agent import DummyAgent
+from agents.dummy_agent import DummyAgent2
 
 
 def main(n_games=100):
@@ -13,8 +13,11 @@ def main(n_games=100):
                                value_function_name='value_function.pkl'))
     # agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
     #                            models_dir_path='../ur_models',
-    #                            value_function_name='2_6.pkl'))
-    agents.append(DummyAgent())
+    #                            value_function_name='sigmoid_120_120.pkl'))
+    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
+                               models_dir_path='../ur_models',
+                               value_function_name='softplus_100_100.pkl'))
+    # agents.append(DummyAgent2())
 
     assert len(agents) == 2
 

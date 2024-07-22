@@ -1,4 +1,5 @@
 import os
+import torch
 from game.royal_game_of_ur import RoyalGameOfUr
 from example_states_test import STATES
 from agents.nn_agent import NNAgent
@@ -61,7 +62,13 @@ def compare_agents(root_dir=os.getcwd()):
     evaluation_match(agents[1], agents[0], n_games=200, verbose=True)
 
 
+def inspect_model(path='../ur_models/value_function.pkl'):
+    model = torch.load(path)
+    print(model)
+
+
 if __name__ == '__main__':
     # test_states()
     # test_parameters()
-    compare_agents()
+    # compare_agents()
+    inspect_model()

@@ -41,7 +41,7 @@ def test_eval_initial_states():
                          models_dir_path='../ur_models',
                          )
 
-    y = agent.value_function(x).detach().numpy()[:,0]
+    y = agent.value_function(x).detach().numpy()[:, 0]
     w_0 = np.array([1, 4, 6, 4, 1]) / 16
     w_1 = np.array([0, 4, 6, 4, 1]) / 15
 
