@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 
 
 class bcolors:
@@ -66,3 +67,16 @@ def initialize_weights(model, weight_range=0.1):
 def binary_array_to_indices(a):
     """Convert a binary array to a list of indices"""
     return np.where(a)[0]
+
+
+class WeightedMSELoss(nn.Module):
+    def __init__(self, weight=1.):
+        self.weight = weight
+        super(WeightedMSELoss, self).__init__()
+
+    def forward(self, input, target):
+        # Calculate the weights based on the target probabilities
+        weights = 1 + (2 * target - 1) ** 2 * self.weight
+        # Compute the weighted MSE loss
+        loss = weights * (input - target) ** 2
+        return loss.mean()
