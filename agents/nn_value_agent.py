@@ -5,7 +5,7 @@ import torch.nn as nn
 from typing import List, Dict
 from game.evaluation import evaluation_match
 from game.agent import Agent
-from agents.random_agent import RandomAgent
+from agents.dummy_agent import DummyAgent2
 from game.training_data import state_to_features
 from src.utils import bar, bcolors, cprint
 
@@ -180,20 +180,17 @@ class NNValueAgent(Agent):
         print(f"\nTime: {t:.2f} s")
 
     def train_value_function(self, x, y_target,
-                             lr=0.01,
-                             n_epoch=100,
-                             weight_decay=1e-5,
-                             verbose=True):
+                             criterion_class=nn.modules.loss.MSELoss,
+                             optimizer_class=torch.optim.Adagrad,
+                             lr=0.01, n_epoch=100, weight_decay=1e-5,
+                             p_batch=0.1, verbose=True):
         """Train the value function using the training data"""
 
         # Define loss function
-        criterion = nn.modules.loss.MSELoss()
-        # criterion = nn.modules.loss.BCELoss()
+        criterion = criterion_class()
 
         # Define optimizer
-        # optimizer = torch.optim.SGD(self.value_function.parameters(), lr=lr, momentum=0.9)
-        optimizer = torch.optim.Adam(self.value_function.parameters(), lr=lr, weight_decay=weight_decay)
-        # optimizer = torch.optim.Adagrad(self.value_function.parameters(), lr=lr)
+        optimizer = optimizer_class(self.value_function.parameters(), lr=lr, weight_decay=weight_decay)
 
         # metrics before training
         loss_before = 0.
@@ -210,8 +207,13 @@ class NNValueAgent(Agent):
                 if n_epoch > 1:
                     if (epoch+1) % 10 == 0:
                         print(f'\rEpoch {epoch + 1}/{n_epoch}', end='')
-            y_model = self.value_function(x.float())
-            loss = criterion(y_model, y_target)
+
+            batch_mask = np.random.random(size=len(x)) < p_batch
+
+            x_batch = x[batch_mask]
+            y_batch = y_target[batch_mask]
+            y_model = self.value_function(x_batch.float())
+            loss = criterion(y_model, y_batch)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -250,21 +252,23 @@ class NNValueAgent(Agent):
         torch.save(self.value_function, self.get_value_function_path())
         cprint(f'Value function saved', bcolors.OKGREEN)
 
-    def evaluate(self, n_games=50, show_game=False):
+    def evaluate(self,
+                 n_games=50,
+                 test_agent = DummyAgent2(),
+                 base_elo=480,
+                 show_game=False):
         """Evaluate the components of the agent (value function)"""
         print(f'\nEvaluating agent on {n_games} games...')
 
-        # agents
-        random_agent = RandomAgent()
-
         elo = 0
         for order in range(2):
-            agents = [self, random_agent]
+            agents = [self, test_agent]
             if order == 1:
                 agents = list(reversed(agents))
             print(f'\nAgent 1: {agents[0]}\nAgent 2: {agents[1]}\n')
 
             # evaluation match
-            elo += evaluation_match(*agents, n_games=n_games, show_game=show_game, player=order)
+            elo += evaluation_match(*agents, n_games=n_games, show_game=show_game,
+                                    player=order, base_elo=base_elo)
 
         return elo / 2
