@@ -17,7 +17,7 @@ def play_game(agent_1, agent_2, verbose):
 
 def evaluation_match(agent_1, agent_2, n_games,
                      show_game=False, prior=0.5,
-                     player=0, verbose=True):
+                     player=0, base_elo=0, verbose=True):
     out = np.zeros(2, dtype=float)
     score = None
     times = [time()]
@@ -36,7 +36,7 @@ def evaluation_match(agent_1, agent_2, n_games,
             speed = (j_stop - j_start) / (times[j_stop] - times[j_start])
             eta = n_left / speed
             print(f'\rscore: {out[player]:3.0f} / {i + 1:3}   '
-                  f'elo: {e[player]:.0f}   '
+                  f'elo: {e[player]+base_elo:.0f}   '
                   f'eta: {eta // 60:.0f} min {eta % 60:.0f} s', end='  ')
 
     if verbose:
