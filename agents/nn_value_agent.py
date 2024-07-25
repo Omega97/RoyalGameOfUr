@@ -99,24 +99,24 @@ class NNValueAgent(Agent):
 
         return np.dot(values, NNValueAgent.PROBA)
 
-    def _get_move_values(self, legal_move_indices, state_info, player_id):
+    def _get_move_values(self, state_info):
         """Get the value of each move in legal_moves"""
-        values = np.zeros(len(legal_move_indices))
+        values = np.zeros(len(state_info["legal_move_indices"]))
 
         # iterate over all legal moves
-        for i in range(len(legal_move_indices)):
+        for i in range(len(state_info["legal_move_indices"])):
             state = self.game.deepcopy()
             state = state.set_state(state_info)
-            move = legal_move_indices[i]
+            move = state_info["legal_move_indices"][i]
 
             # get new state after move
             state.move(move)
 
             # evaluate state
             if state.is_game_over():
-                value = state.get_reward()[player_id]
+                value = state.get_reward()[state_info["current_player"]]
             else:
-                value = self._evaluate_state_before_roll(state, player_id)
+                value = self._evaluate_state_before_roll(state, state_info["current_player"])
             values[i] = value
 
         return values
@@ -128,17 +128,14 @@ class NNValueAgent(Agent):
         """
 
         # get move values
-        player_id = state_info["current_player"]
-        legal_moves = state_info["legal_moves"]
-        legal_move_indices = np.arange(len(legal_moves))[legal_moves > 0]
-        values = self._get_move_values(legal_move_indices, state_info, player_id)
+        values = self._get_move_values(state_info)
 
         # pick move with best value
         best_i = np.argmax(values)
-        best_move = legal_move_indices[best_i]
+        best_move = state_info["legal_move_indices"][best_i]
         best_eval = values[best_i]
         expected_reward = [best_eval, 1 - best_eval]
-        if player_id == 1:
+        if state_info["current_player"] == 1:
             expected_reward = list(reversed(expected_reward))
         expected_reward = np.array(expected_reward)
 
@@ -230,10 +227,10 @@ class NNValueAgent(Agent):
 
             # print data and results
             p = (rmse_after - rmse_before) / rmse_before
-            message = f'RMSE: {rmse_before:.5f} -> {rmse_after:.5f}  ({p:+.2%})'
+            message = f'RMSE: {rmse_before:.6f} -> {rmse_after:.6f}  ({p:+.2%})'
             cprint(message, bcolors.OKGREEN if p < 0 else bcolors.FAIL)
             p = (loss_after - loss_before) / loss_before
-            message = f'Loss: {loss_before:.5f} -> {loss_after:.5f}  ({p:+.2%})'
+            message = f'Loss: {loss_before:.6f} -> {loss_after:.6f}  ({p:+.2%})'
             cprint(message, bcolors.OKGREEN if p < 0 else bcolors.FAIL)
 
     def train_agent(self, x, y_policy, y_value, verbose=True, **kwargs):
@@ -254,7 +251,7 @@ class NNValueAgent(Agent):
 
     def evaluate(self,
                  n_games=50,
-                 test_agent = DummyAgent2(),
+                 test_agent=DummyAgent2(),
                  base_elo=480,
                  show_game=False):
         """Evaluate the components of the agent (value function)"""
@@ -272,3 +269,108 @@ class NNValueAgent(Agent):
                                     player=order, base_elo=base_elo)
 
         return elo / 2
+
+
+class DeepNNValueAgent(NNValueAgent):
+
+    def __init__(self, *args, depth=3, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.depth = depth
+
+    def evaluate_states_after_roll_with_depth(self, state_info_list: List[Dict]):
+        """
+        Evaluate multiple states using the value function
+        """
+        features = [state_to_features(state_info) for state_info in state_info_list]
+        x = np.array(features)
+        x = torch.tensor(x, dtype=torch.float)
+        return self.value_function(x).detach().numpy()
+
+    def _evaluate_state_before_roll_with_depth(self, state, player_id, depth):
+        """
+        Calculate the expected value of a state before rolling the dice
+        by averaging the values of the states after all possible rolls
+        """
+        assert depth > 1
+        values = np.zeros(len(NNValueAgent.PROBA))
+
+        # iterate over all rolls
+        for j in range(len(values)):
+            state_2 = state.deepcopy()
+            state_2.n_steps = j             # set the roll
+            state_2_info = state_2.get_state_info()
+
+            # check for game over
+            if state_2.is_game_over():
+                values[j] = state_2.get_reward()[player_id]
+            else:
+                best_move, expected_reward = self._get_best_move_with_depth(state_2_info, depth-1)
+                values[j] = expected_reward[player_id]
+
+        return np.dot(values, NNValueAgent.PROBA)
+
+    def _get_move_values_with_depth(self, state_info, depth):
+        """Get the value of each move in legal_moves"""
+        values = np.zeros(len(state_info["legal_move_indices"]))
+        player_id = state_info["current_player"]
+        legal_move_indices = state_info["legal_move_indices"]
+
+        # iterate over all legal moves
+        for i in range(len(legal_move_indices)):
+            state = self.game.deepcopy()
+            state = state.set_state(state_info)
+            move = legal_move_indices[i]
+
+            # get new state after move
+            state.move(move)
+
+            # evaluate state
+            if state.is_game_over():
+                value = state.get_reward()[player_id]
+            else:
+                if depth <= 1:
+                    value = self._evaluate_state_before_roll(state, player_id)
+                else:
+                    value = self._evaluate_state_before_roll_with_depth(state, player_id, depth)
+            values[i] = value
+
+        return values
+
+    def _get_best_move_with_depth(self, state_info, depth):
+        """
+        Get the best move and its expected value
+        after the dice roll
+        """
+
+        # get move values
+        values = self._get_move_values_with_depth(state_info, depth)
+
+        # pick move with best value
+        best_i = np.argmax(values)
+        best_move = state_info["legal_move_indices"][best_i]
+        best_eval = values[best_i]
+        expected_reward = [best_eval, 1 - best_eval]
+        if state_info["current_player"] == 1:
+            expected_reward = list(reversed(expected_reward))
+        expected_reward = np.array(expected_reward)
+
+        return best_move, expected_reward
+
+    def get_action(self, state_info: dict, verbose=False, bar_length=30, half_life=10) -> dict:
+        """
+        Evaluate all the possible moves and return
+        the one with the highest expected value.
+        """
+        assert self.value_function is not None
+        player_id = state_info["current_player"]
+
+        # get best move
+        best_move, expected_reward = self._get_best_move_with_depth(state_info, self.depth)
+        best_eval = expected_reward[player_id]
+
+        if verbose:
+            print(f'action {best_move}')
+            color = bcolors.RED if player_id == 1 else bcolors.BLUE
+            print(f'{bar(p=best_eval, color=color, length=bar_length)} {best_eval:.3f}')
+
+        return {"action": best_move, "eval": expected_reward}

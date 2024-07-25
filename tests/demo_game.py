@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from game.royal_game_of_ur import RoyalGameOfUr
 from agents.random_agent import RandomAgent
 from agents.value_agent import ValueAgent
-from agents.nn_value_agent import NNValueAgent
+from agents.nn_value_agent import NNValueAgent, DeepNNValueAgent
 from agents.human_agent import HumanAgent
 # from agents.dummy_agent import DummyAgent
 
@@ -68,9 +68,9 @@ def demo_game_nn_value_vs_human(dir_path='..//ur_models'):
     agents = list()
 
     agents.append(HumanAgent())
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(),
-                               models_dir_path=dir_path,
-                               value_function_name='softplus_100_100.pkl'))
+    agents.append(DeepNNValueAgent(game_instance=RoyalGameOfUr(), depth=3,
+                                   models_dir_path=dir_path,
+                                   value_function_name='softplus_100_100.pkl'))
 
     assert len(agents) == 2
     play_game(*agents, do_plot=True)
@@ -81,23 +81,27 @@ def demo_game_nn_value_agent(dir_path='..//ur_models', seed=0, swap=False,
     """Play a game between two NN-based agents and print the result"""
     np.random.seed(seed)  # 0) 13  1) 0  2) 1  3) 3  4) 2
     agents = list()
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path,
-                               value_function_name='softplus_100_100.pkl'))
-    agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
+    agents.append(DeepNNValueAgent(game_instance=RoyalGameOfUr(), depth=1,
+                                   models_dir_path=dir_path, value_function_name='value_function.pkl'))
+    agents.append(DeepNNValueAgent(game_instance=RoyalGameOfUr(), depth=1,
+                                   models_dir_path=dir_path, value_function_name='value_function.pkl'))
+    # agents.append(DeepNNValueAgent(game_instance=RoyalGameOfUr(), depth=1,
+    #                                models_dir_path=dir_path, value_function_name='softplus_100_100.pkl'))
+    # agents.append(NNValueAgent(game_instance=RoyalGameOfUr(), models_dir_path=dir_path))
     assert len(agents) == 2
     if swap:
         agents = list(reversed(agents))
     play_game(*agents, verbose=verbose, do_plot=True,title=title, show=show)
 
 
-def game_plots(nrows=2, ncols=3):
+def game_plots(nrows=2, ncols=3, swap=False):
     seed = 0
     fig, ax = plt.subplots(nrows, ncols)
     for i in range(nrows):
         for j in range(ncols):
             plt.sca(ax[i, j])
             print()
-            demo_game_nn_value_agent(seed=seed, verbose=False,
+            demo_game_nn_value_agent(seed=seed, verbose=False, swap=swap,
                                      title=f'Seed = {seed}', show=False)
             seed += 1
     plt.show()
@@ -107,5 +111,6 @@ if __name__ == '__main__':
     # demo_game_random()
     # demo_game_value_agent()
     # demo_game_nn_value_vs_human()
-    # demo_game_nn_value_agent()
-    game_plots()
+    demo_game_nn_value_agent()
+    # game_plots()
+    # game_plots(swap=True)
