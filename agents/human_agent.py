@@ -36,5 +36,7 @@ class HumanAgent(Agent):
                     break
                 except AssertionError:
                     pass
+                except ValueError:
+                    pass
             assert action in move_indices, f'invalid move {action}'
             return {"action": action, "eval": np.ones(2) * 0.5}
