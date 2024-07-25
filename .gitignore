@@ -5,6 +5,7 @@ ur_games/
 ur_models/
 ur_games.rar
 ur_models.rar
+tests/tournament.pkl
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
