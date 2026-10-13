@@ -62,13 +62,30 @@ def compare_agents(root_dir=os.getcwd()):
     evaluation_match(agents[1], agents[0], n_games=200, verbose=True)
 
 
+def count_parameters(model):
+    """Counts the total number of trainable parameters in a PyTorch model.
+
+    Args:
+      model: The PyTorch model to count parameters for.
+
+    Returns:
+      The total number of trainable parameters in the model.
+    """
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
 def inspect_model(path='../ur_models/value_function.pkl'):
     model = torch.load(path)
+    print('\nArchitecture:')
     print(model)
+    print('\nParameter count:')
+    print(f'{count_parameters(model)/1000:.1f}k')
 
 
 if __name__ == '__main__':
     # test_states()
     # test_parameters()
     # compare_agents()
-    inspect_model()
+    # inspect_model(path='../ur_models/softplus_100_100.pkl')
+    # inspect_model()
+    print(torch.__version__)

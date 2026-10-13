@@ -4,18 +4,17 @@ from torch import nn
 from game.training import Training
 from agents.nn_value_agent import DeepNNValueAgent
 from game.royal_game_of_ur import RoyalGameOfUr
-from src.utils import initialize_weights, WeightedMSELoss
+from src.utils import initialize_weights, WeightedMSELoss, MLPWithSkipConnections
 from tests.demo_game import demo_game_nn_value_agent
 
 
 def main(n_cycles=10,
-         weight_decay=1e-6,
+         weight_decay=1e-5,                 # regularization
          n_evaluation_games=0,              # set to 0 to skip evaluation
          criterion_class=WeightedMSELoss,   # nn.modules.loss.MSELoss, WeightedMSELoss
-         optimizer_class=torch.optim.Adam,  # Adagrad, Adam
-         n_games_per_cycle=250,
-         n_epoch=300,
-         model_hidden_units=100,
+         optimizer_class=torch.optim.SGD,  # Adagrad, Adam
+         n_games_per_cycle=20,
+         n_epoch=100,
          model_weight_range=0.2,
          ):
     """
@@ -27,7 +26,7 @@ def main(n_cycles=10,
 
     # Define the architecture of the value function
     def value_function_builder(input_size, output_size,
-                               hidden_units=model_hidden_units*2,
+                               hidden_size=80,
                                weight_range=model_weight_range):
         """
         Build a neural network with input_size input units,
@@ -35,24 +34,27 @@ def main(n_cycles=10,
         """
         value_function = (
             nn.Sequential(
-                nn.Linear(input_size, hidden_units),
+                nn.Linear(input_size, hidden_size),
                 nn.Softplus(),
-                nn.Dropout(p=0.5),  # Dropout layer with 50% probability
-                nn.Linear(hidden_units, hidden_units),
+                nn.Linear(hidden_size, hidden_size),
                 nn.Softplus(),
-                nn.Dropout(p=0.5),  # Dropout layer with 50% probability
-                nn.Linear(hidden_units, hidden_units//5),
+                nn.Dropout(p=0.1),  # Dropout layer with 50% probability
+                nn.Linear(hidden_size, 20),
                 nn.Softplus(),
-                nn.Dropout(p=0.5),  # Dropout layer with 50% probability
-                nn.Linear(hidden_units//5, output_size),
+                nn.Linear(20, output_size),
                 nn.Sigmoid()
             )
         )
         initialize_weights(value_function, weight_range=weight_range)
+
+        # value_function = MLPWithSkipConnections(input_size=input_size,
+        #                                         hidden_sizes=[hidden_units, hidden_units],
+        #                                         output_size=output_size)
+
         return value_function
 
     # Create the agent
-    agent = DeepNNValueAgent(game_instance=RoyalGameOfUr(), depth=3,
+    agent = DeepNNValueAgent(game_instance=RoyalGameOfUr(), depth=2,
                              models_dir_path=os.path.join(root_dir, 'ur_models'),
                              value_function_builder=value_function_builder)
 
@@ -74,7 +76,7 @@ def main(n_cycles=10,
     #              )
 
     # Run the second phase training process
-    # training.run(n_cycles=20,
+    # training.run(n_cycles=1000,
     #              n_games_per_cycle=n_games_per_cycle,
     #              weight_decay=weight_decay,
     #              n_evaluation_games=n_evaluation_games,
@@ -86,16 +88,16 @@ def main(n_cycles=10,
     #              )
 
     # Refinement
-    training.run(n_cycles=1000,     # 1000
-                 n_games_per_cycle=0,
+    training.run(n_cycles=10_000,     # 60
+                 n_games_per_cycle=2,
                  weight_decay=weight_decay,
                  n_evaluation_games=n_evaluation_games,
                  criterion_class=criterion_class,
                  optimizer_class=optimizer_class,
-                 n_epoch=1000,    # 300
+                 n_epoch=30,    # 300
                  halflife=0,     # 0
                  lr=1e-4,        # 1e-3
-                 do_delete_games=False
+                 do_delete_games=True,
                  )
 
     # Evaluation

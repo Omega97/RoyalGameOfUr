@@ -63,7 +63,7 @@ def demo_game_value_agent(value_path='..data/ur_models/model.pkl'):
     play_game(*agents, do_plot=False)
 
 
-def demo_game_nn_value_vs_human(dir_path='..//ur_models'):
+def demo_game_nn_value_vs_human(dir_path='..//ur_models', reverse=False):
     """Play a game between two NN-based agents and print the result"""
     agents = list()
 
@@ -73,6 +73,8 @@ def demo_game_nn_value_vs_human(dir_path='..//ur_models'):
                                    value_function_name='softplus_100_100.pkl'))
 
     assert len(agents) == 2
+    if reverse:
+        agents = list(reversed(agents))
     play_game(*agents, do_plot=True)
 
 
@@ -110,7 +112,9 @@ def game_plots(nrows=2, ncols=3, swap=False):
 if __name__ == '__main__':
     # demo_game_random()
     # demo_game_value_agent()
-    # demo_game_nn_value_vs_human()
-    demo_game_nn_value_agent()
+    # demo_game_nn_value_agent()
     # game_plots()
     # game_plots(swap=True)
+    # demo_game_nn_value_vs_human()
+    demo_game_nn_value_vs_human(reverse=False)
+    demo_game_nn_value_vs_human(reverse=True)

@@ -80,3 +80,21 @@ class WeightedMSELoss(nn.Module):
         # Compute the weighted MSE loss
         loss = weights * (input - target) ** 2
         return loss.mean()
+
+
+class MLPWithSkipConnections(nn.Module):
+    def __init__(self, input_size, hidden_sizes, output_size):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        for hidden_size in hidden_sizes:
+            self.layers.append(nn.Linear(input_size, hidden_size))
+            input_size = hidden_size
+        self.output_layer = nn.Linear(hidden_sizes[-1], output_size)
+
+    def forward(self, x):
+        identity = x
+        for layer in self.layers:
+            x = layer(x)
+            x += identity  # Skip connection
+            identity = x  # Update identity for the next layer
+        return self.output_layer(x)
